@@ -74,7 +74,7 @@
 
   .caption {
     margin-top: 10px;
-    max-width: 500px;
+    max-width: 550px;
     text-align: center;
     font-size: 15px;
     line-height: 1.5;
@@ -151,7 +151,7 @@
 </head>
 <body>
 <div class="stage">
-  <div class="corner tl">SISTEMA · ESCUCHA ACTIVA</div>
+  <div class="corner tl">SISTEMA · ESCUCHA FLEXIBLE INTELIGENTE</div>
   <div class="corner tr" id="clockCorner">--:--:--</div>
 
   <div class="core-wrap">
@@ -191,14 +191,12 @@
   const ctx = canvas.getContext('2d');
   const voiceSelect = document.getElementById('voiceSelect');
 
-  // Reloj
   function setClock(){
     clockCorner.textContent = new Date().toLocaleTimeString('es-PA', {hour12:false});
   }
   setClock();
   setInterval(setClock, 1000);
 
-  // Ticks SVG alrededor del núcleo
   const ticksGroup = document.getElementById('ticks');
   const TICK_COUNT = 48;
   const tickElements = [];
@@ -217,7 +215,6 @@
     tickElements.push(line);
   }
 
-  // Audio Context & Visualizador Radial
   let audioCtx, analyser, microphone, dataArray;
 
   function initAudioVisualizer() {
@@ -296,7 +293,7 @@
     }
   }
 
-  // --- MOTOR DE VOZ MEJORADO Y CORREGIDO ---
+  // --- MOTOR DE VOZ ---
   let vocesDisponibles = [];
   let vozSeleccionada = null;
 
@@ -305,11 +302,10 @@
     vocesDisponibles = speechSynthesis.getVoices();
     voiceSelect.innerHTML = '';
 
-    // Filtrar voces en español prioritariamente
     let vocesEs = vocesDisponibles.filter(v => v.lang.startsWith('es'));
     let lista = vocesEs.length > 0 ? vocesEs : vocesDisponibles;
 
-    lista.forEach((v, index) => {
+    lista.forEach((v) => {
       const opt = document.createElement('option');
       opt.value = v.name;
       let tag = (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online') || v.name.includes('Neural')) ? ' ⭐ (Natural)' : '';
@@ -317,7 +313,6 @@
       voiceSelect.appendChild(opt);
     });
 
-    // Intentar preseleccionar una voz natural o en español
     let vozPreferida = lista.find(v => v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Jorge') || v.name.includes('Helena')) || lista[0];
     if (vozPreferida) {
       voiceSelect.value = vozPreferida.name;
@@ -345,7 +340,7 @@
       try { rec.stop(); } catch(e){}
     }
 
-    speechSynthesis.cancel(); // Cancelar cualquier audio en cola
+    speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(texto);
     
     if (vozSeleccionada) {
@@ -356,7 +351,7 @@
     }
     
     u.pitch = 1.0;
-    u.rate = 0.98; // Ajuste ligero para naturalidad
+    u.rate = 0.98;
     
     u.onend = () => {
       if (escuchando) {
@@ -372,11 +367,54 @@
     speechSynthesis.speak(u);
   }
 
-  function normalizar(s){
-    return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  // LIMPIEZA SEMÁNTICA Y COMPARADOR INTELIGENTE
+  const MULETILLAS = [
+    "en el", "en la", "es en", "es el", "es la", "son los", "son las", "se encuentra en",
+    "esta en", "pienso que es", "creo que es", "yo creo que", "seria el", "seria la",
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "que", "se"
+  ];
+
+  function normalizarTexto(s) {
+    let t = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\s]/gi, ' ').trim();
+    return t;
   }
 
-  // BANCO COMPLETO DE 215 PREGUNTAS
+  function extraerPalabrasClave(texto) {
+    let limpio = normalizarTexto(texto);
+    let palabras = limpio.split(/\s+/).filter(p => p.length > 2 && !MULETILLAS.includes(p));
+    return palabras;
+  }
+
+  function evaluarRespuestaSemantica(respuestaUsuario, respuestaCorrecta) {
+    const normUsuario = normalizarTexto(respuestaUsuario);
+    const normCorrecta = normalizarTexto(respuestaCorrecta);
+
+    // 1. Coincidencia exacta o directa
+    if (normUsuario.includes(normCorrecta) || normCorrecta.includes(normUsuario)) {
+      return true;
+    }
+
+    // 2. Coincidencia por Palabras Clave
+    const palabrasUsuario = extraerPalabrasClave(respuestaUsuario);
+    const palabrasCorrectas = extraerPalabrasClave(respuestaCorrecta);
+
+    if (palabrasCorrectas.length === 0) {
+      return normUsuario.includes(normCorrecta);
+    }
+
+    let coincidencias = 0;
+    palabrasCorrectas.forEach(clave => {
+      if (palabrasUsuario.some(u => u.includes(clave) || clave.includes(u))) {
+        coincidencias++;
+      }
+    });
+
+    // Si coincide el 60% o más de las palabras clave principales de la respuesta
+    const porcentajeAcierto = coincidencias / palabrasCorrectas.length;
+    return porcentajeAcierto >= 0.6;
+  }
+
+  // BANCO DE 215 PREGUNTAS COMPLETO
   const MATERIAS = {
     "cardiovascular": {
       "label": "Cardiovascular",
@@ -423,7 +461,7 @@
         {"pregunta": "En electrofisiología cardíaca, ¿cuál onda representa la despolarización de los ventrículos?", "respuesta": "complejo qrs"},
         {"pregunta": "¿Cuál enunciado corresponde al ciclo cardíaco?", "respuesta": "la frecuencia cardiaca es inversamente proporcional al tiempo del ciclo cardiaco"},
         {"pregunta": "¿Cuál enunciado es incorrecto respecto a los músculos papilares?", "respuesta": "contribuyen al cierre de las valvulas"},
-        {"pregunta": "¿Qué enunciado caracteriza a la precarga?", "respuesta": "es la presion telediastolico"},
+        {"pregunta": "¿Qué enunciado caracteriza a la precarga?", "respuesta": "es la presion telediastolica"},
         {"pregunta": "¿Qué iones provocan la autoexcitación del nodo sinusal?", "respuesta": "el calcio y el sodio"},
         {"pregunta": "¿En qué periodo del ciclo cardíaco aumenta la tensión del músculo cardíaco pero no produce el vaciado?", "respuesta": "periodo de contraccion isovolumetrica"},
         {"pregunta": "¿Cuál no corresponde al período de eyección en el ciclo cardíaco?", "respuesta": "valvula aortica se cierra"},
@@ -542,7 +580,7 @@
         {"pregunta": "¿Cómo se llaman los mensajeros químicos que actúan sobre células vecinas del mismo tejido?", "respuesta": "paracrinas"},
         {"pregunta": "¿Qué proceso reduce el número de receptores activos ante un exceso de hormona?", "respuesta": "regulacion a la baja o down-regulation"},
         {"pregunta": "La hormona glucagón se caracteriza por:", "respuesta": "actuar sobre el higado y tejido adiposo"},
-        {"pregunta": "¿Sobre qué tejidos actúa la insulina?", "respuesta": "sobre todas las estructuras escritas"},
+        {"pregunta": "Sobre qué tejidos actúa la insulina?", "respuesta": "sobre todas las estructuras escritas"},
         {"pregunta": "Características bioquímicas de la prolactina:", "respuesta": "peptido, favorece la secrecion de leche materna"},
         {"pregunta": "¿Cuál es el lugar principal de acción de la TSH?", "respuesta": "glandula tiroides"},
         {"pregunta": "¿Qué estructura química tiene la insulina?", "respuesta": "peptido"},
@@ -555,12 +593,12 @@
     }
   };
 
-  // RECONOCIMIENTO DE VOZ Y LÓGICA DE EXAMEN
   let escuchando = false;
   let estadoEstudio = "INICIO";
   let materiaActual = null;
   let preguntaActual = null;
   let rec = null;
+  let preguntasRestantes = [];
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -588,14 +626,14 @@
   }
 
   function procesarComando(transcripcion) {
-    const txt = normalizar(transcripcion);
+    const txt = normalizarTexto(transcripcion);
     statusEl.innerHTML = `Escuchado: "<b>${transcripcion}</b>"`;
 
     if (txt.includes("apagate") || txt.includes("apagar") || txt.includes("desactivar")) {
       escuchando = false;
       estadoEstudio = "INICIO";
       rec.stop();
-      hablar("Apagando sistemas, señor JP. Éxitos en su examen.", () => {
+      hablar("Apagando sistemas, señor JP. Mucho éxito en su examen.", () => {
         statusEl.innerHTML = "Presiona <b>ACTIVAR SISTEMA</b> para habilitar el micrófono";
         materiaBadge.innerHTML = "";
         captionEl.textContent = "";
@@ -614,13 +652,14 @@
 
       if (seleccionada) {
         materiaActual = seleccionada;
+        preguntasRestantes = [...MATERIAS[materiaActual].preguntas];
         estadoEstudio = "EN_EXAMEN";
-        materiaBadge.innerHTML = `MATERIA ACTIVA: <b>${MATERIAS[materiaActual].label.toUpperCase()}</b> (${MATERIAS[materiaActual].preguntas.length} PREGUNTAS)`;
+        materiaBadge.innerHTML = `MATERIA ACTIVA: <b>${MATERIAS[materiaActual].label.toUpperCase()}</b> (${preguntasRestantes.length} PREGUNTAS DISPONIBLES)`;
         hablar(`Iniciando banco de ${MATERIAS[materiaActual].label}, señor JP.`, () => {
           siguientePregunta();
         });
       } else {
-        hablar("Por favor elija una materia válida: Cardiovascular, Respiratorio, Renal, Digestivo o Endocrino.");
+        hablar("Por favor elija una materia: Cardiovascular, Respiratorio, Renal, Digestivo o Endocrino.");
       }
       return;
     }
@@ -628,27 +667,26 @@
     if (estadoEstudio === "EN_EXAMEN" && preguntaActual) {
       if (txt.includes("cambiar materia") || txt.includes("otra materia")) {
         estadoEstudio = "ESPERANDO_MATERIA";
-        hablar("Entendido, señor JP. ¿Qué materia desea repasar ahora?");
+        hablar("Entendido, señor JP. ¿Qué otra materia desea repasar?");
         return;
       }
 
       if (txt.includes("no se") || txt.includes("ni idea") || txt.includes("paso") || txt.includes("siguiente")) {
-        hablar(`La respuesta correcta es ${preguntaActual.respuesta}. Siguiente pregunta.`, () => {
+        hablar(`La respuesta es ${preguntaActual.respuesta}. Siguiente pregunta.`, () => {
           siguientePregunta();
         });
         return;
       }
 
-      const respCorrecta = normalizar(preguntaActual.respuesta);
-      const palabrasClave = respCorrecta.split(' ').filter(p => p.length > 3);
-      const acierto = txt.includes(respCorrecta) || (palabrasClave.length > 0 && palabrasClave.every(p => txt.includes(p)));
+      // EVALUACIÓN FLEXIBLE E INTELIGENTE
+      const acierto = evaluarRespuestaSemantica(transcripcion, preguntaActual.respuesta);
 
       if (acierto) {
-        hablar("Correcto, señor JP. Excelente.", () => {
+        hablar("Correcto, señor JP. Muy bien.", () => {
           siguientePregunta();
         });
       } else {
-        hablar(`Incorrecto. La respuesta exacta es: ${preguntaActual.respuesta}. Continuemos.`, () => {
+        hablar(`Incorrecto. La respuesta clave es: ${preguntaActual.respuesta}. Continuemos.`, () => {
           siguientePregunta();
         });
       }
@@ -657,9 +695,20 @@
 
   function siguientePregunta() {
     if (!materiaActual) return;
-    const banco = MATERIAS[materiaActual].preguntas;
-    const idx = Math.floor(Math.random() * banco.length);
-    preguntaActual = banco[idx];
+    
+    if (preguntasRestantes.length === 0) {
+      preguntasRestantes = [...MATERIAS[materiaActual].preguntas];
+      hablar(`Ha completado todas las preguntas de ${MATERIAS[materiaActual].label}. Reiniciando el banco.`, () => {
+        siguientePregunta();
+      });
+      return;
+    }
+
+    const idx = Math.floor(Math.random() * preguntasRestantes.length);
+    preguntaActual = preguntasRestantes[idx];
+    preguntasRestantes.splice(idx, 1); // Evitar repetir inmediatamente
+
+    materiaBadge.innerHTML = `MATERIA ACTIVA: <b>${MATERIAS[materiaActual].label.toUpperCase()}</b> (RESTANTES: ${preguntasRestantes.length + 1})`;
     hablar(preguntaActual.pregunta);
   }
 
