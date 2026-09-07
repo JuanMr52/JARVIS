@@ -127,6 +127,7 @@
     background: var(--core-dim);
     transition: width .05s linear;
   }
+  .meter-fill.hot { background: var(--warn); }
 
   .corner {
     position: absolute;
@@ -151,6 +152,94 @@
     font-size: 12px;
     max-width: 220px;
   }
+
+  .panel-toggle {
+    position: absolute;
+    bottom: 18px; right: 18px;
+    background: transparent;
+    border: 1px solid var(--ring);
+    color: var(--text-dim);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+  }
+  .panel-toggle:hover { border-color: var(--core-dim); color: var(--text); }
+
+  .panel-overlay {
+    position: fixed; inset: 0;
+    background: rgba(2,6,8,0.88);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 20;
+    padding: 24px;
+  }
+  .panel-overlay.open { display: flex; }
+
+  .panel-box {
+    width: min(560px, 100%);
+    max-height: 84vh;
+    overflow-y: auto;
+    background: #061014;
+    border: 1px solid var(--ring);
+    border-radius: 8px;
+    padding: 22px 24px;
+  }
+  .panel-box h2 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    color: var(--core);
+    font-weight: 500;
+  }
+  .panel-box p.hint {
+    margin: 0 0 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .campo { margin-bottom: 12px; }
+  .campo label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    letter-spacing: 0.04em;
+  }
+  .campo input, .campo select, .campo textarea {
+    width: 100%;
+    background: #030608;
+    color: var(--text);
+    border: 1px solid var(--ring);
+    border-radius: 4px;
+    padding: 8px 9px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .campo textarea { min-height: 54px; }
+  .panel-actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+  .panel-actions button {
+    background: transparent;
+    border: 1px solid var(--core-dim);
+    color: var(--core);
+    border-radius: 4px;
+    padding: 8px 14px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .panel-actions button:hover { background: rgba(79,216,255,0.08); }
+  .panel-actions button.secundario {
+    border-color: var(--ring); color: var(--text-dim);
+  }
+  .cerrar-panel {
+    float: right;
+    background: none; border: none;
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -171,14 +260,28 @@
 
   <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
 
-  <div class="status" id="status">Presiona <b>ACTIVAR SISTEMA</b> para iniciar</div>
+  <div class="status" id="status">Presiona <b>ACTIVAR SISTEMA</b> para habilitar el micrófono</div>
   <div class="caption" id="caption"></div>
   <div class="materia-badge" id="materiaBadge"></div>
   <button class="startbtn" id="startBtn">ACTIVAR SISTEMA</button>
 
   <div class="voicebar">
-    <label for="voiceSelect">Voz:</label>
+    <label for="voiceSelect">Voz</label>
     <select id="voiceSelect"></select>
+  </div>
+</div>
+
+<button class="panel-toggle" id="panelToggle">📚 CONOCIMIENTO LIBRE</button>
+
+<div class="panel-overlay" id="panelOverlay">
+  <div class="panel-box">
+    <button class="cerrar-panel" id="cerrarPanel">✕</button>
+    <h2>CONOCIMIENTO POR PALABRA CLAVE (OPCIONAL)</h2>
+    <p class="hint">Panel secundario para consultas rápidas fuera de la sesión de estudio.</p>
+    <div class="campo">
+      <label for="fMateria">Materia</label>
+      <select id="fMateria"><option>Fisiología</option><option>General</option></select>
+    </div>
   </div>
 </div>
 
@@ -189,7 +292,29 @@
   const captionEl = document.getElementById('caption');
   const materiaBadge = document.getElementById('materiaBadge');
   const coreGlow = document.getElementById('coreGlow');
+  const meterFill = document.getElementById('meterFill');
   const clockCorner = document.getElementById('clockCorner');
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // Animación Ticks
+  const ticksGroup = document.getElementById('ticks');
+  const TICK_COUNT = 48;
+  const tickElements = [];
+  for (let i = 0; i < TICK_COUNT; i++) {
+    const angle = (i / TICK_COUNT) * Math.PI * 2;
+    const r1 = 96, r2 = 100;
+    const x1 = 100 + r1 * Math.cos(angle);
+    const y1 = 100 + r1 * Math.sin(angle);
+    const x2 = 100 + r2 * Math.cos(angle);
+    const y2 = 100 + r2 * Math.sin(angle);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+    line.classList.add('tick');
+    ticksGroup.appendChild(line);
+    tickElements.push(line);
+  }
 
   function setClock(){
     clockCorner.textContent = new Date().toLocaleTimeString('es-PA', {hour12:false});
@@ -197,34 +322,83 @@
   setClock();
   setInterval(setClock, 1000);
 
+  // Audio Context & Animaciones de Onda
+  let audioCtx, analyser, microphone, dataArray;
+  let animId;
+
+  function initAudioVisualizer() {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      microphone = audioCtx.createMediaStreamSource(stream);
+      microphone.connect(analyser);
+      analyser.fftSize = 64;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      drawVisualizer();
+    }).catch(err => console.log("Audio visualizer error:", err));
+  }
+
+  function drawVisualizer() {
+    animId = requestAnimationFrame(drawVisualizer);
+    if (!analyser) return;
+    analyser.getByteFrequencyData(dataArray);
+
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+    let average = sum / dataArray.length;
+
+    // Animación de medidor e iluminación central
+    meterFill.style.width = Math.min(100, (average / 128) * 100) + '%';
+    if (average > 30) {
+      coreGlow.classList.add('listening');
+      tickElements.forEach((el, idx) => {
+        if (Math.random() < average / 100) el.classList.add('active');
+        else el.classList.remove('active');
+      });
+    } else {
+      coreGlow.classList.remove('listening');
+      tickElements.forEach(el => el.classList.remove('active'));
+    }
+
+    // Renderizado en Canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = 70;
+
+    ctx.beginPath();
+    ctx.strokeStyle = '#4fd8ff';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < dataArray.length; i++) {
+      const v = dataArray[i] / 128.0;
+      const rad = (i / dataArray.length) * Math.PI * 2;
+      const r = radius + (v * 15);
+      const x = centerX + r * Math.cos(rad);
+      const y = centerY + r * Math.sin(rad);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  // Voces
   let voz = null;
   const voiceSelect = document.getElementById('voiceSelect');
-  const PISTAS_CALIDAD = ['google', 'natural', 'online', 'neural', 'microsoft'];
 
   function poblarVoces(){
     const voces = speechSynthesis.getVoices();
     if (!voces.length) return;
-    const ordenadas = [...voces].sort((a, b) => {
-      const aEs = a.lang && a.lang.startsWith('es') ? 1 : 0;
-      const bEs = b.lang && b.lang.startsWith('es') ? 1 : 0;
-      if (aEs !== bEs) return bEs - aEs;
-      return 0;
-    });
     voiceSelect.innerHTML = '';
-    ordenadas.forEach((v) => {
+    voces.forEach((v) => {
       const opt = document.createElement('option');
       opt.value = v.name;
       opt.textContent = `${v.name} (${v.lang})`;
       voiceSelect.appendChild(opt);
     });
-    voz = ordenadas.find(v => v.lang && v.lang.startsWith('es')) || ordenadas[0];
-    if(voz) voiceSelect.value = voz.name;
+    voz = voces.find(v => v.lang && v.lang.startsWith('es')) || voces[0];
+    if (voz) voiceSelect.value = voz.name;
   }
-
-  voiceSelect.addEventListener('change', () => {
-    const voces = speechSynthesis.getVoices();
-    voz = voces.find(v => v.name === voiceSelect.value) || voz;
-  });
 
   if ('speechSynthesis' in window) {
     speechSynthesis.onvoiceschanged = poblarVoces;
@@ -234,13 +408,22 @@
   function hablar(texto, alTerminar){
     captionEl.textContent = texto;
     if (!('speechSynthesis' in window)) { if (alTerminar) alTerminar(); return; }
+    
+    // Detener micrófono temporalmente mientras Jarvis habla para evitar bucles
+    if (rec && escuchando) rec.stop();
+
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(texto);
     if (voz) u.voice = voz;
     u.lang = (voz && voz.lang) || 'es-ES';
     u.pitch = 1.0;
     u.rate = 1.0;
-    u.onend = () => { if (alTerminar) alTerminar(); };
+    
+    u.onend = () => {
+      if (escuchando) try { rec.start(); } catch(e){}
+      if (alTerminar) alTerminar();
+    };
+    
     speechSynthesis.speak(u);
   }
 
@@ -248,7 +431,7 @@
     return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   }
 
-  /* BANCO DE PREGUNTAS COMPLETO Y ESTRUCTURADO */
+  // Banco de Preguntas
   const MATERIAS = {
     "cardiovascular": {
       "label": "Cardiovascular",
@@ -281,57 +464,53 @@
     }
   };
 
-  /* ESTADO DEL SISTEMA */
-  let activo = false;
-  let estadoEstudio = "INICIO"; // "ESPERANDO_MATERIA", "EN_EXAMEN"
+  // Motor de Reconocimiento
+  let escuchando = false;
+  let estadoEstudio = "INICIO";
   let materiaActual = null;
   let preguntaActual = null;
   let rec = null;
 
-  // Reconocimiento de Voz
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (SpeechRecognition) {
     rec = new SpeechRecognition();
-    rec.continuous = false;
-    rec.interimResults = false;
+    rec.continuous = true;
+    rec.interimResults = true;
     rec.lang = 'es-ES';
 
-    rec.onstart = () => {
-      coreGlow.classList.add('listening');
-      statusEl.innerHTML = "<b>ESCUCHANDO...</b>";
-    };
-
-    rec.onend = () => {
-      coreGlow.classList.remove('listening');
-      if (activo && !speechSynthesis.speaking) {
-        try { rec.start(); } catch(e){}
+    rec.onresult = (e) => {
+      let transcripcion = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        transcripcion += e.results[i][0].transcript;
+      }
+      if (e.results[e.results.length - 1].isFinal) {
+        procesarComando(transcripcion);
       }
     };
 
-    rec.onresult = (e) => {
-      const texto = e.results[0][0].transcript;
-      console.log("Escuchado:", texto);
-      procesarComando(texto);
+    rec.onend = () => {
+      if (escuchando && !speechSynthesis.speaking) {
+        try { rec.start(); } catch(e){}
+      }
     };
   }
 
   function procesarComando(transcripcion) {
     const txt = normalizar(transcripcion);
+    statusEl.innerHTML = `Escuchado: "<b>${transcripcion}</b>"`;
 
-    // Apagado del Asistente
     if (txt.includes("apagate") || txt.includes("apagar") || txt.includes("desactivar")) {
-      activo = false;
+      escuchando = false;
       estadoEstudio = "INICIO";
       rec.stop();
-      hablar("Apagando sistemas, señor JP. Buena suerte en sus estudios.", () => {
-        statusEl.innerHTML = "Presiona <b>ACTIVAR SISTEMA</b> para iniciar";
+      hablar("Apagando sistemas, señor JP. Hasta la próxima.", () => {
+        statusEl.innerHTML = "Presiona <b>ACTIVAR SISTEMA</b> para habilitar el micrófono";
         materiaBadge.innerHTML = "";
       });
       return;
     }
 
-    // Selección de Materia
     if (estadoEstudio === "ESPERANDO_MATERIA") {
       let seleccionada = null;
       for (let k in MATERIAS) {
@@ -345,35 +524,31 @@
         materiaActual = seleccionada;
         estadoEstudio = "EN_EXAMEN";
         materiaBadge.innerHTML = `MATERIA: <b>${MATERIAS[materiaActual].label.toUpperCase()}</b>`;
-        hablar(`Excelente elección, señor JP. Iniciando banco de ${MATERIAS[materiaActual].label}.`, () => {
+        hablar(`Iniciando banco de ${MATERIAS[materiaActual].label}, señor JP.`, () => {
           siguientePregunta();
         });
-      } else {
-        hablar("No reconozco esa materia, señor JP. Por favor elija entre Cardiovascular, Respiratorio o Renal.");
       }
       return;
     }
 
-    // Evaluación de Respuestas en Modo Examen
     if (estadoEstudio === "EN_EXAMEN" && preguntaActual) {
-      // Opción: No sé
       if (txt.includes("no se") || txt.includes("ni idea") || txt.includes("paso")) {
-        hablar(`La respuesta correcta era: ${preguntaActual.respuesta}. Pasemos a la siguiente, señor.`, () => {
+        hablar(`La respuesta correcta era ${preguntaActual.respuesta}. Pasemos a la siguiente.`, () => {
           siguientePregunta();
         });
         return;
       }
 
-      // Comprobación de Respuesta
       const respCorrecta = normalizar(preguntaActual.respuesta);
-      const esCorrecto = txt.includes(respCorrecta) || respCorrecta.includes(txt);
+      const palabrasClave = respCorrecta.split(' ').filter(p => p.length > 3);
+      const acierto = txt.includes(respCorrecta) || palabrasClave.some(p => txt.includes(p));
 
-      if (esCorrecto) {
-        hablar("Correcto, señor JP. Buen trabajo. Vamos con la siguiente.", () => {
+      if (acierto) {
+        hablar("Respuesta correcta, señor JP. Muy bien.", () => {
           siguientePregunta();
         });
       } else {
-        hablar(`Decepcionante, señor. La respuesta correcta es ${preguntaActual.respuesta}. Siguiente pregunta.`, () => {
+        hablar(`Decepcionante, señor. La respuesta era ${preguntaActual.respuesta}. Siguiente pregunta.`, () => {
           siguientePregunta();
         });
       }
@@ -389,20 +564,24 @@
   }
 
   startBtn.addEventListener('click', () => {
-    if (!SpeechRecognition) {
-      alert("Tu navegador no soporta reconocimiento de voz Web Speech API.");
-      return;
-    }
-    activo = true;
+    initAudioVisualizer();
+    escuchando = true;
     estadoEstudio = "ESPERANDO_MATERIA";
     startBtn.disabled = true;
 
-    const saludo = "Buenas noches, señor JP. Sistemas en línea. ¿Qué materia desea estudiar hoy?";
+    const saludo = "Buenas noches, señor JP. Sistemas activos. ¿Qué materia desea estudiar hoy?";
     hablar(saludo, () => {
       try { rec.start(); } catch(e){}
     });
   });
 
+  // Toggle Panel
+  const panelToggle = document.getElementById('panelToggle');
+  const panelOverlay = document.getElementById('panelOverlay');
+  const cerrarPanel = document.getElementById('cerrarPanel');
+
+  panelToggle.onclick = () => panelOverlay.classList.add('open');
+  cerrarPanel.onclick = () => panelOverlay.classList.remove('open');
 })();
 </script>
 </body>
