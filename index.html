@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>J.A.R.V.I.S. — Detector de Aplauso</title>
+<title>J.A.R.V.I.S. — Asistente de Estudio</title>
 <style>
   :root {
     --bg: #030608;
@@ -88,6 +88,15 @@
     padding: 0 20px;
   }
 
+  .materia-badge {
+    margin-top: 6px;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--core-dim);
+    min-height: 14px;
+  }
+  .materia-badge b { color: var(--core); }
+
   .startbtn {
     margin-top: 26px;
     padding: 10px 22px;
@@ -161,7 +170,7 @@
     50% { opacity: 1; }
   }
 
-  /* --- Panel de materias --- */
+  /* --- Panel de materias (banco libre por palabra clave, opcional) --- */
   .panel-toggle {
     position: absolute;
     bottom: 18px; right: 18px;
@@ -302,6 +311,7 @@
 
   <div class="status" id="status">Presiona <b>ACTIVAR</b> para habilitar el micrófono</div>
   <div class="caption" id="caption"></div>
+  <div class="materia-badge" id="materiaBadge"></div>
   <button class="startbtn" id="startBtn">ACTIVAR SISTEMA</button>
 
   <div class="voicebar">
@@ -310,13 +320,13 @@
   </div>
 </div>
 
-<button class="panel-toggle" id="panelToggle">📚 MATERIAS</button>
+<button class="panel-toggle" id="panelToggle">📚 CONOCIMIENTO LIBRE</button>
 
 <div class="panel-overlay" id="panelOverlay">
   <div class="panel-box">
     <button class="cerrar-panel" id="cerrarPanel">✕</button>
-    <h2>PANEL DE MATERIAS</h2>
-    <p class="hint">Agrega preguntas y respuestas de tus materias. Cuando digas algo parecido a la pregunta o a las palabras clave, el sistema responderá con lo que escribiste aquí.</p>
+    <h2>CONOCIMIENTO POR PALABRA CLAVE (OPCIONAL)</h2>
+    <p class="hint">Este panel es independiente del banco de preguntas por materia. Sirve para respuestas rápidas por palabra clave suelta, sin flujo de examen.</p>
 
     <div class="campo">
       <label for="fMateria">Materia</label>
@@ -331,7 +341,7 @@
       </select>
     </div>
     <div class="campo">
-      <label for="fClaves">Palabras clave (separadas por coma — lo que dirías en voz alta)</label>
+      <label for="fClaves">Palabras clave (separadas por coma)</label>
       <input type="text" id="fClaves" placeholder="ej: nefrona, filtración glomerular">
     </div>
     <div class="campo">
@@ -359,6 +369,7 @@
   const startBtn = document.getElementById('startBtn');
   const statusEl = document.getElementById('status');
   const captionEl = document.getElementById('caption');
+  const materiaBadge = document.getElementById('materiaBadge');
   const coreGlow = document.getElementById('coreGlow');
   const meterFill = document.getElementById('meterFill');
   const clockCorner = document.getElementById('clockCorner');
@@ -389,26 +400,13 @@
   setClock();
   setInterval(setClock, 1000);
 
-  // --- Respuestas tipo Jarvis ---
-  const RESPONSES = [
-    "A la orden. Sistema activo.",
-    "Te escucho. ¿Qué necesitas?",
-    "Aplauso registrado. Todo en orden.",
-    "Aquí estoy. Dime qué hacemos.",
-    "Sistema en línea y a tu disposición."
-  ];
-
   let voz = null;
   const voiceSelect = document.getElementById('voiceSelect');
-
-  // Palabras que suelen indicar una voz de mayor calidad (motor de red vs. local)
   const PISTAS_CALIDAD = ['google', 'natural', 'online', 'neural', 'microsoft'];
 
   function poblarVoces(){
     const voces = speechSynthesis.getVoices();
     if (!voces.length) return;
-
-    // Todas primero, priorizando español y voces de mejor calidad
     const ordenadas = [...voces].sort((a, b) => {
       const aEs = a.lang && a.lang.startsWith('es') ? 1 : 0;
       const bEs = b.lang && b.lang.startsWith('es') ? 1 : 0;
@@ -417,16 +415,13 @@
       const bCal = PISTAS_CALIDAD.some(p => b.name.toLowerCase().includes(p)) ? 1 : 0;
       return bCal - aCal;
     });
-
     voiceSelect.innerHTML = '';
-    ordenadas.forEach((v, i) => {
+    ordenadas.forEach((v) => {
       const opt = document.createElement('option');
       opt.value = v.name;
       opt.textContent = `${v.name} (${v.lang})`;
       voiceSelect.appendChild(opt);
     });
-
-    // Preselecciona la mejor opción en español
     const mejor = ordenadas.find(v => v.lang && v.lang.startsWith('es') &&
       PISTAS_CALIDAD.some(p => v.name.toLowerCase().includes(p))) || ordenadas[0];
     voz = mejor;
@@ -456,7 +451,158 @@
     speechSynthesis.speak(u);
   }
 
-  // --- Reconocimiento de voz: escucha un comando después del aplauso ---
+  function normalizar(s){
+    return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  }
+
+  /* =========================================================
+     BANCO DE PREGUNTAS POR MATERIA (modo examen / quiz)
+     ========================================================= */
+  const MATERIAS = {"cardiovascular": {"label": "Cardiovascular", "aliases": ["cardiovascular", "cardiaco", "cardiología", "el corazon", "el corazón"], "preguntas": [{"pregunta": "¿Qué tipos de potenciales de acción son característicos en las fibras musculares cardíacas?", "respuesta": "Meseta"}, {"pregunta": "¿Con que otro nombre se conoce al haz de Bachman?", "respuesta": "Banda interauricular anterior"}, {"pregunta": "¿De qué no depende el Batmotropismo?", "respuesta": "Del nodo sinusal"}, {"pregunta": "Termino que se emplea para describir a la capacidad que tiene un tejido de generar sus propios estímulos. Automatismo", "respuesta": "Automatismo"}, {"pregunta": "¿Con qué fibras se comparan a las fibras internodulares?", "respuesta": "Purkinje"}, {"pregunta": "¿Cuál se considera el primer evento del ciclo cardíaco?", "respuesta": "Diástole auricular"}, {"pregunta": "¿Qué fase al finalizar me indica el final de la sístole ventricular?", "respuesta": "Eyección lenta"}, {"pregunta": "¿Cómo se denomina al volumen total de sangre presente en el ventrículo al final de la diástole?", "respuesta": "Diastólico final/Telediastólico/Precarga"}, {"pregunta": "Nombre las células encargadas de detectar un cambio en la postura del cuerpo por variaciones en la presión arterial.", "respuesta": "Barorreceptores"}, {"pregunta": "Termino que hace referencia a la capacidad que el ventrículo tiene de expandirse y llenarse durante la diástole.", "respuesta": "Distensibilidad"}, {"pregunta": "¿En qué período se presenta un aumento de la presión sistólica y una disminución de la presión ventricular?", "respuesta": "Período de eyección"}, {"pregunta": "¿En dónde se sitúa el nodo sinusal dentro del corazón?", "respuesta": "Aurícula derecha"}, {"pregunta": "En el ciclo cardíaco ¿De cuánto es el volumen sistólico?", "respuesta": "Aproximadamente 70 ml"}, {"pregunta": "¿Cuál es considerada la primera fase del ciclo cardíaco?", "respuesta": "Diástole auricular"}, {"pregunta": "¿Con qué otro nombre se conoce a la protodiástole?", "respuesta": "Eyección lenta"}, {"pregunta": "Válvulas se abren en la fase de eyección ventricular rápida.", "respuesta": "Semilunares/Pulmonar-aórtica"}, {"pregunta": "Período donde disminuye rápidamente las presiones intraventriculares y regresan a sus bajos valores diastólicos.", "respuesta": "Relajación isovolumétrica"}, {"pregunta": "Tipo de flujo sanguíneo en el cual se puede apreciar erosión de las paredes internas del vaso.", "respuesta": "Flujo turbulento"}, {"pregunta": "¿Qué sucede con la resistencia vascular periférica de un vaso sanguíneo cuando este último se dilata?", "respuesta": "Disminuye"}, {"pregunta": "Término que describe la propiedad del músculo cardíaco de generar sus propios estímulos.", "respuesta": "Automatismo"}, {"pregunta": "¿Cuál es la principal causa del flujo sanguíneo turbulento que ocurre en los vasos?", "respuesta": "Erosión"}, {"pregunta": "¿Qué representa el intervalo P-R del electrocardiograma?", "respuesta": "Inicio de la excitación eléctrica auricular y el inicio de la excitación eléctrica ventricular."}, {"pregunta": "En el electrocardiograma ¿Qué me representa la onda T?", "respuesta": "La repolarización de los ventrículos."}, {"pregunta": "¿Qué ocurre en la fase 0 del potencial de acción cardíaco?", "respuesta": "Se abren los canales de sodio y calcio."}, {"pregunta": "¿En qué células cardíacas encontramos mayor automaticidad?", "respuesta": "Células P."}, {"pregunta": "¿Cuál o cuáles válvulas se encuentran abiertas durante la sístole auricular derecha?", "respuesta": "La válvula bicúspide y tricúspide."}, {"pregunta": "¿Qué debe ocurrir para que las válvulas semilunares se abran en el ciclo cardíaco?", "respuesta": "La presión ventricular debe superar a la presión de la aorta y arteria pulmonar."}, {"pregunta": "¿Qué ocurre en la fase lenta de la eyección ventricular?", "respuesta": "La presión ventricular desciende."}, {"pregunta": "¿Cuál de las siguientes estructuras producirá en el corazón la contracción auricular?", "respuesta": "Haz internodular."}, {"pregunta": "¿Cuál de las siguientes afirmaciones sobre el músculo cardíaco es la más exacta?.", "respuesta": "La contracción depende de la cantidad de calcio que rodea a los miocitos cardíacos."}, {"pregunta": "¿Qué sucede al final de la relajación isovolumétrica ventricular?.", "respuesta": "La válvula mitral se abre."}, {"pregunta": "¿Qué provoca, normalmente, la estimulación simpática del corazón?.", "respuesta": "Aumento de la fuerza de contracción de los ventrículos."}, {"pregunta": "¿Cuánto es el valor aproximado del llenado ventricular que es realizado por la contracción auricular?", "respuesta": "Aproximadamente 20%."}, {"pregunta": "¿Qué caracteriza a la capacitancia?", "respuesta": "Inversamente proporcional a la elastancia."}, {"pregunta": "¿Cuál de los siguientes efectos no aumenta la presión arterial?", "respuesta": "Ninguna de las respuestas es correcta."}, {"pregunta": "¿En cuánto tiempo retrasa el impulso el nodo atrioventricular?", "respuesta": "Aproximadamente 0,12 segundos."}, {"pregunta": "¿En la diástole auricular, cual es el porcentaje aproximado de sangre que fluye directamente de las venas a los ventrículos?", "respuesta": "Aproximadamente un 80%."}, {"pregunta": "¿Qué sucede durante la sístole ventricular?", "respuesta": "Las válvulas cúspides se cierran."}, {"pregunta": "¿Cuál de las siguientes ondas o complejos del electrocardiograma representa la repolarización ventricular y su relajación?", "respuesta": "Onda T."}, {"pregunta": "¿Cuál de las siguientes válvulas cardíacas permanece cerrada mientras el ventrículo izquierdo se encuentra en diástole?", "respuesta": "Válvula aórtica."}, {"pregunta": "Con respecto al estudio del corazón (electrofisiología cardiaca), ¿Cuál de las siguientes ondas representa la despolarización de los ventrículos?.", "respuesta": "Complejo QRS."}, {"pregunta": "¿Cuál de los siguientes enunciados corresponde al ciclo cardíaco?", "respuesta": "La frecuencia cardíaca es inversamente proporcional al tiempo del ciclo cardíaco."}, {"pregunta": "¿Cuál de los siguientes enunciados es incorrecto respecto a los músculos papilares?", "respuesta": "Contribuyen al cierre de las válvulas."}, {"pregunta": "¿Qué enunciado caracteriza a la precarga?", "respuesta": "Es la presión telediastólico."}, {"pregunta": "¿Qué iones provocan la autoexcitación del nodo sinusal?", "respuesta": "El calcio y el sodio."}, {"pregunta": "¿De qué no depende el Batmotropismo?", "respuesta": "Del nodo sinusal."}, {"pregunta": "¿En qué periodo del ciclo cardíaco se produce aumento de la tensión en el músculo cardíaco, pero no produce el vaciado de la cavidad?", "respuesta": "Período de contracción isovolumétrica."}, {"pregunta": "¿Cuál de los siguientes enunciados no corresponde al período de eyección en el ciclo cardíaco?", "respuesta": "Válvula aortica se cierra."}, {"pregunta": "Además de los nervios simpáticos, angiotensina II y vasopresina, el flujo sanguíneo en condiciones fisiológicas está determinado por necesidades:", "respuesta": "Metabólicas."}, {"pregunta": "¿En qué parte del E.C.G. podemos apreciar la repolarización de las aurículas?", "respuesta": "En ninguna de las opciones escritas."}, {"pregunta": "¿Cuál de las siguientes estructuras tendrá la menor velocidad de conducción del potencial de acción cardíaco?", "respuesta": "Fibras del haz AV."}, {"pregunta": "Relacione: Nódulo sinusal", "respuesta": "Aproximadamente 0,05 m/s."}, {"pregunta": "Relacione: Miocardio auricular", "respuesta": "de 0,8 a 1,0 m/s aproximadamente."}, {"pregunta": "Relacione: Nódulo atrioventricular", "respuesta": "de 0,05 a 1,0 m/s aproximadamente."}, {"pregunta": "Relacione: Fibras de Purkinje", "respuesta": "de 2,0 a 4,0 m/s aproximadamente."}, {"pregunta": "Relacione: Miocardio ventricular", "respuesta": "de 0,5 a 1,0 m/s aproximadamente."}, {"pregunta": "Relacione: Periodo de eyección", "respuesta": "La presión ventricular abre la válvula semilunar."}, {"pregunta": "Relacione: Relajación isovolumétrica", "respuesta": "Disminución de la presión intraventricular."}, {"pregunta": "Relacione: Contracción isovolumétrica", "respuesta": "Aumento de la presión ventricular."}, {"pregunta": "Relacione: Periodo de diástole", "respuesta": "La presión ventricular abre la válvula atrioventricular."}, {"pregunta": "Relacione: Diástasis", "respuesta": "Fase prolongada del ciclo cardíaco."}, {"pregunta": "Relacione: Finaliza repolarización ventricular", "respuesta": "Relajación ventricular isovolumétrica."}, {"pregunta": "Relacione: Válvulas cardíacas cerradas", "respuesta": "Contracción ventricular isovolumétrica."}, {"pregunta": "Relacione: Máximo valor en la presión ventricular", "respuesta": "Eyección ventricular rápida."}, {"pregunta": "Relacione: Fase prolongada del ciclo cardíaco", "respuesta": "Diástasis."}, {"pregunta": "Relacione: Abertura de la válvula bicúspide", "respuesta": "Llenado ventricular rápido."}, {"pregunta": "Relacione: Capacidad del corazón de responder a un estímulo adecuado", "respuesta": "Batmotropismo."}, {"pregunta": "Relacione: Capacidad del músculo cardíaco para relajarse", "respuesta": "Lusitropismo."}, {"pregunta": "Relacione: Capacidad del corazón para contraerse", "respuesta": "Inotropismo."}, {"pregunta": "Relacione: Capacidad de las células cardíacas de contraerse con frecuencia", "respuesta": "Cronotropismo."}, {"pregunta": "Relacione: Capacidad del corazón para conducir el impulso eléctrico", "respuesta": "Dromotropismo."}, {"pregunta": "Relacione: Fase 0", "respuesta": "Despolarización rápida."}, {"pregunta": "Relacione: Fase 1", "respuesta": "Repolarización inicial."}, {"pregunta": "Relacione: Fase 2", "respuesta": "Meseta."}, {"pregunta": "Relacione: Fase 3", "respuesta": "Repolarización rápida."}, {"pregunta": "Relacione: Fase 4", "respuesta": "Potencial de reposo."}, {"pregunta": "Relacione: Sístole", "respuesta": "0,27 segundos."}, {"pregunta": "Relacione: Diástole", "respuesta": "0,53 segundos."}, {"pregunta": "Relacione: Eyección", "respuesta": "0,22 segundos."}, {"pregunta": "Relacione: Llenado ventricular", "respuesta": "0,34 segundos."}, {"pregunta": "Relacione: Relajación isométrica", "respuesta": "0,10 segundos."}]}, "respiratorio": {"label": "Respiratorio", "aliases": ["respiratorio", "pulmonar", "sistema respiratorio", "respiracion", "respiración"], "preguntas": [{"pregunta": "¿En qué órganos es producida en mayor concentración la enzima convertidora de angiotensina?", "respuesta": "Pulmones"}, {"pregunta": "¿En dónde se cataliza la conversión de angiotensina I a angiotensina II principalmente?", "respuesta": "Pulmones"}, {"pregunta": "¿Cuál es el ion más importante en la composición del surfactante?", "respuesta": "Calcio"}, {"pregunta": "En el transporte de CO2 ¿Quién cataliza la reacción de CO2 con el agua?", "respuesta": "Anhidrasa carbónica"}, {"pregunta": "¿Cómo se llamada a la estructura constituida por un bronquio respiratorio, conductos alveolares y alvéolos?", "respuesta": "Unidad respiratoria"}, {"pregunta": "¿Para que ocurra un aumento del flujo sanguíneo cerebral que ion debe estar en concentraciones bajas?", "respuesta": "Oxígeno"}, {"pregunta": "¿Qué reflejo utiliza receptores de estiramiento en los bronquios para detener la inspiración excesiva?", "respuesta": "Reflejo de insuflación de Hering-Breuer"}, {"pregunta": "Los quimiorreceptores centrales se caracterizan por:", "respuesta": "No detectan cambios de pO2 y detectan cambios de pCO2 de forma indirecta."}, {"pregunta": "¿Dónde se encuentra el centro respiratorio encargado de emitir señales de \"rampa\" para la inspiración normal?", "respuesta": "Grupo respiratorio dorsal."}, {"pregunta": "¿Cuál es la función principal del centro neumotáxico en la protuberancia?", "respuesta": "Limitar la duración de la inspiración."}, {"pregunta": "¿En qué situación se activa principalmente el grupo respiratorio ventral?", "respuesta": "Necesidad de niveles altos de ventilación."}, {"pregunta": "¿Qué reflejo utiliza receptores de estiramiento en los bronquios para detener la inspiración excesiva?", "respuesta": "Reflejo de insuflación de Hering-Breuer."}, {"pregunta": "¿Cuál es el estímulo directo más potente que actúa sobre la zona quimio sensible del centro respiratorio?", "respuesta": "Iones hidrógeno."}, {"pregunta": "Aunque el CO₂ estimula la zona quimio sensible, lo hace de forma indirecta porque:", "respuesta": "El CO₂ atraviesa la barrera y reacciona con agua para formar H+, que es el estímulo real."}, {"pregunta": "¿Dónde se localizan los quimiorreceptores periféricos que detectan cambios en el oxígeno arterial?", "respuesta": "En los cuerpos carotídeos y aórticos."}, {"pregunta": "¿A qué nivel de presión parcial de oxígeno (PO₂) arterial se activan intensamente los quimiorreceptores periféricos?", "respuesta": "Por debajo de 60 mmHg."}, {"pregunta": "Durante el ejercicio intenso, el aumento de la ventilación se debe principalmente a:", "respuesta": "Señales neurógenas directas de la corteza motora al centro respiratorio."}, {"pregunta": "¿Qué sucede con la respuesta ventilatoria al CO₂ después de varios días de exposición a niveles altos (climatización)?", "respuesta": "El centro respiratorio pierde gran parte de su sensibilidad por reajuste renal de bicarbonato."}]}, "renal": {"label": "Renal", "aliases": ["renal", "riñon", "riñón", "riñones"], "preguntas": [{"pregunta": "La angiotensina II provoca que se eleve la resistencia vascular periférica debido a que es un potente agente:", "respuesta": "Vasoconstrictor"}, {"pregunta": "¿En qué órganos es producida la angiotensinogenasa?", "respuesta": "Riñones"}, {"pregunta": "Nombre de la enzima que cataliza la conversión de angiotensinógeno en angiotensina I en el plasma.", "respuesta": "Renina"}, {"pregunta": "¿Con qué otro nombre se conoce a la renina?", "respuesta": "Angiotensinogenasa"}, {"pregunta": "Hormona sintetizada por las células yuxtaglomerulares en situaciones de baja volemia o presión arterial.", "respuesta": "Renina"}, {"pregunta": "¿Qué ion en el túbulo contorneado proximal se reabsorbe en paralelo al sodio y agua?.", "respuesta": "Calcio"}, {"pregunta": "Término para describir la excreción de orina en términos cuantitativos y cualitativos en un tiempo determinado.", "respuesta": "Diuresis"}, {"pregunta": "¿Dónde se reabsorbe la mayor cantidad de agua en la nefrona?", "respuesta": "Túbulo proximal"}, {"pregunta": "¿Qué porción del túbulo distal excreta potasio?", "respuesta": "Porción distal o final"}, {"pregunta": "La rama descendente del Asa de Henle cuando pasa el agua se caracteriza por ser", "respuesta": "Permeable"}, {"pregunta": "El plasma se filtra en la cápsula glomerular a través de los capilares glomerulares, este llega a través de la arteriola:", "respuesta": "Aferente"}, {"pregunta": "¿Cuál es la fórmula del ácido carbónico?", "respuesta": "H2CO3"}, {"pregunta": "La anhidrasa carbónica juega un papel importante en el equilibrio ácido base, ella se encuentra en:", "respuesta": "En la mayoría de las células."}, {"pregunta": "Cuando aumenta la ingesta de potasio en la dieta, el equilibrio del potasio se mantiene mediante la excreción de este. ¿Cuál es el principal mecanismo por el que tiene lugar la excreción?", "respuesta": "Aumento de la secreción de potasio en los túbulos contorneados distales."}, {"pregunta": "¿Qué cambio esperaría encontrar en una persona deshidratada privada de agua durante 24 horas?", "respuesta": "Aumento de la permeabilidad al agua en el tubo colector."}, {"pregunta": "¿Qué mecanismo provoca aumento del flujo sanguíneo renal y del filtrado glomerular?", "respuesta": "Dilatación de las arteriolas aferentes."}, {"pregunta": "¿Cuál de las siguientes hormonas aumenta la secreción de potasio?", "respuesta": "Aldosterona."}, {"pregunta": "¿Cuál de los siguientes factores me puede reducir la filtración glomerular?", "respuesta": "Aumento de la presión oncótica del capilar glomerular."}, {"pregunta": "En los riñones normalmente, la concentración de Na+ que circula en el TCD con respecto al Na+ que está circulando en el plasma de la arteriola aferente en el mismo momento es:", "respuesta": "Menor."}, {"pregunta": "Normalmente, cuando en el organismo se detecta un incremento de las concentraciones de K+ debido a la ingesta en la dieta, el exceso de este es:", "respuesta": "Secretado por el TCD."}, {"pregunta": "Un joven corre 10 km en un día caluroso necesita líquido en el cuerpo debido a que se deshidrata. Sus riñones funcionan normalmente y presenta altas concentraciones de ADH, ¿En qué parte de los túbulos renales se reabsorbe mayor cantidad de agua?", "respuesta": "Túbulo contorneado proximal."}, {"pregunta": "¿Cuál es el pH óptimo en el cuerpo?", "respuesta": "7.40."}, {"pregunta": "¿Qué me indica un acidemia?", "respuesta": "Un nivel alto en la concentración de hidrogeno en sangre."}, {"pregunta": "¿Qué mecanismo no determina la presión hidrostática glomerular?", "respuesta": "Todas determinan la presión hidrostática."}, {"pregunta": "¿Cuál de los siguientes enunciados es incorrecto respecto al equilibrio ácido base?", "respuesta": "El aumento de la ventilación alveolar reduce el pH."}, {"pregunta": "¿En dónde se ubica la macula densa?", "respuesta": "En la porción inicial del túbulo contorneado distal."}, {"pregunta": "Si tengo niveles de ADH muy elevados y los riñones funcionan normalmente, ¿en qué parte del túbulo renal se reabsorbe el máximo de agua?.", "respuesta": "Túbulo proximal."}, {"pregunta": "La mayor parte del filtrado glomerular se reabsorbe en:", "respuesta": "El túbulo proximal."}, {"pregunta": "¿Cuál de las siguientes situaciones provocaría un descenso máximo en la FG en una persona en la que, por lo demás, los riñones no presentan anomalías?.", "respuesta": "Disminución del 50% en la resistencia arteriolar eferente."}, {"pregunta": "Cuando aumenta la ingesta de potasio en la dieta, el equilibrio del potasio se mantiene mediante la excreción de este. ¿Cuál es el Disminución de la filtración glomerular de potasio. principal mecanismo por el que tiene lugar la excreción?", "respuesta": "Aumento de la secreción de potasio en los túbulos contorneados distales."}, {"pregunta": "¿Cuál de los siguientes enunciados es correcto respecto a la inulina?", "respuesta": "Se filtra a través del glomérulo y no se reabsorbe."}, {"pregunta": "¿Qué cambio esperaría encontrar en una persona deshidratada privada de agua durante 24 horas?", "respuesta": "Aumento de la permeabilidad al agua en el tubo colector."}, {"pregunta": "¿Qué mecanismo provoca aumento del flujo sanguíneo renal y del filtrado glomerular?", "respuesta": "Dilatación de las arteriolas aferentes."}, {"pregunta": "Relacione: Constricción de la arteriola aferente", "respuesta": "Disminuye la tasa de filtrado glomerular."}, {"pregunta": "Relacione: Expansión del volumen isoosmótico", "respuesta": "Sin cambios en el volumen del LIC."}, {"pregunta": "Relacione: Constricción de la arteriola eferente", "respuesta": "Aumenta la tasa de filtrado glomerular."}, {"pregunta": "Relacione: Expansión del volumen hiperosmótico", "respuesta": "Disminuye el volumen del LIC."}, {"pregunta": "Relacione: Expansión del volumen hipoosmótico", "respuesta": "Aumenta el volumen del LIC."}]}, "digestivo": {"label": "Digestivo", "aliases": ["digestivo", "digestion", "digestión", "gastrointestinal"], "preguntas": [{"pregunta": "¿Cuál es el estímulo habitual que ocasiona el peristaltismo en el intestino?", "respuesta": "Distensión"}, {"pregunta": "Nombre la enzima secretada por las glándulas salivales que cumple función de digerir los almidones del bolo alimenticio.", "respuesta": "Ptialina"}, {"pregunta": "Nombre de la sustancia que estimula de forma copiosa la secreción de bicarbonato.", "respuesta": "Secretina"}, {"pregunta": "Nombre del precursor de la enzima pepsina.", "respuesta": "Pepsinógeno"}, {"pregunta": "Escriba el nombre del factor básico que estimula la secreción gástrica a nivel neuronal.", "respuesta": "Acetilcolina"}, {"pregunta": "Fase de la secreción gástrica en la que tiene lugar la masticación y el paso del bolo alimenticio por el esófago.", "respuesta": "Cefálica"}, {"pregunta": "En la fase faríngea involuntaria de la deglución que orificios tapona el paladar blando cuando se eleva?", "respuesta": "Coanas"}, {"pregunta": "¿En qué fase de la deglución es que se interrumpe momentáneamente la respiración?", "respuesta": "Faríngea"}, {"pregunta": "Nombre de la hormona que se encarga de estimular la secreción de ácido clorhídrico por las células parietales.", "respuesta": "Gastrina"}, {"pregunta": "¿Cuál de las siguientes sustancias no forma parte de la saliva?.", "respuesta": "Pepsina."}, {"pregunta": "¿Cuál de los siguientes enunciados es correcto respecto a la secreción gástrica?", "respuesta": "La gastrina estimula la secreción de ácido clorhídrico de manera intensa."}, {"pregunta": "En la producción y secreción de saliva ¿Qué secretan las glándulas bucales?", "respuesta": "Solo moco."}, {"pregunta": "¿Cuál de las siguientes hormonas gastrointestinales estimula la secreción de moco?", "respuesta": "Gastrina."}, {"pregunta": "¿De qué depende las concentraciones elevadas de potasio en la saliva?", "respuesta": "Del intercambio con el sodio."}, {"pregunta": "¿Qué ion tiene la mayor concentración de saliva en condiciones basales, en comparación con el plasma?", "respuesta": "Potasio."}, {"pregunta": "¿Qué hormona contribuye al control de la secreción pancreática?", "respuesta": "Colecistocinina."}, {"pregunta": "¿Qué estimulo facilita e inicia los movimientos peristálticos habitualmente?", "respuesta": "La distensión."}, {"pregunta": "¿Cuál de los siguientes sistemas actúa como inhibidor del tubo digestivo?", "respuesta": "Sistema nervioso simpático."}, {"pregunta": "¿Cuál es el par craneal que se encarga de inervar el esófago, estómago, páncreas y porción superior del intestino delgado?", "respuesta": "Nervio neumogástrico."}, {"pregunta": "En la fase faríngea de la deglución, ¿Qué estructura es fundamental para determinar si un bolo de alimento es suficientemente pequeño para su deglución?", "respuesta": "Pliegues palatofaríngeos."}, {"pregunta": "La fase oral de la deglución finaliza cuando el bolo alimenticio entra en contacto con. Pliegues palatofaríngeos. Epiglotis. Paladar blando. Esfínter esofágico superior.", "respuesta": "Paladar blando."}, {"pregunta": "¿Cuántos músculos masticatorios participan en la formación del bolo alimenticio?", "respuesta": "8."}, {"pregunta": "¿Cuáles glándulas salivales segregan mayor cantidad en porcentaje de saliva normalmente?", "respuesta": "Glándulas submaxilares."}, {"pregunta": "¿Cuáles factores estimulan la secreción gástrica de ácido por las células parietales?", "respuesta": "Todas estimulan secreción gástrica."}, {"pregunta": "¿Qué secretan las células oxínticas del estómago?", "respuesta": "Ácido clorhídrico y factor intrínseco."}, {"pregunta": "Relacione: Ácido clorhídrico", "respuesta": "Estimula la secreción de gastrina."}, {"pregunta": "Relacione: Gastrina", "respuesta": "Estimula la secreción de hidrogeno."}, {"pregunta": "Relacione: Prostaglandinas", "respuesta": "Estimula la secreción de bicarbonato."}, {"pregunta": "Relacione: Colecistocinina", "respuesta": "Estimula la secreción de enzimas pancreáticas."}, {"pregunta": "Relacione: Lipasa lingual", "respuesta": "Producto ácidos grasos."}, {"pregunta": "Relacione: Secretina", "respuesta": "Inhibe la secreción de gastrina."}, {"pregunta": "Relacione: Colecistocinina", "respuesta": "Inhibe el vaciado gástrico."}, {"pregunta": "Relacione: Motilina", "respuesta": "Estimula la motilidad a nivel intestinal."}, {"pregunta": "Relacione: Histamina", "respuesta": "Estimula rápidamente la secreción de ácido clorhídrico."}, {"pregunta": "Relacione: Acetilcolina", "respuesta": "Estimula la secreción de pepsinógeno en las células pépticas."}]}, "endocrino": {"label": "Endocrino", "aliases": ["endocrino", "hormonas", "endocrinologia", "endocrinología"], "preguntas": [{"pregunta": "¿Qué hormona es responsable del aumento de la masa muscular en el hombre?", "respuesta": "Testosterona"}, {"pregunta": "¿Qué tipo de estructura química presenta la testosterona?", "respuesta": "Esteroide"}, {"pregunta": "¿En dónde se sintetiza la hormona de crecimiento?", "respuesta": "Adenohipófisis"}, {"pregunta": "Hormona producida por las células α del páncreas.", "respuesta": "Glucagón"}, {"pregunta": "Nombre de la hormona reguladora responsable de la reabsorción tubular de los fosfatos a nivel renal.", "respuesta": "Parathormona"}, {"pregunta": "Hormona que estimula las contracciones uterinas.", "respuesta": "Oxitocina"}, {"pregunta": "¿Qué estructura química tiene la prolactina?", "respuesta": "Péptido"}, {"pregunta": "¿A qué tipo de estimulación nerviosa se asemejan los efectos de la adrenalina y noradrenalina?", "respuesta": "Simpática"}, {"pregunta": "¿De qué precursor químico derivan todas las hormonas esteroideas?", "respuesta": "Colesterol"}, {"pregunta": "¿En qué parte de la célula se encuentran los receptores para las hormonas tiroideas?", "respuesta": "Núcleo o nucleares"}, {"pregunta": "¿Qué mecanismo de control evita la secreción excesiva de una hormona?", "respuesta": "Retroalimentación negativa"}, {"pregunta": "¿Cuál es la naturaleza química de la insulina y el glucagón?", "respuesta": "Péptidos"}, {"pregunta": "¿Qué tipo de hormonas se almacenan en vesículas secretoras hasta que se necesitan?", "respuesta": "Proteicas"}, {"pregunta": "¿Cómo se llaman los mensajeros que actúan sobre células vecinas del mismo tejido?", "respuesta": "Paracrinas"}, {"pregunta": "¿Qué proceso reduce el número de receptores activos ante un exceso de hormona?", "respuesta": "Regulación a la baja o downregulation"}, {"pregunta": "La hormona glucagón se caracteriza por:", "respuesta": "Actuar sobre el hígado y tejido adiposo."}, {"pregunta": "¿Sobre qué estructura actúa la insulina?.", "respuesta": "Sobre todas las estructuras escritas."}, {"pregunta": "Características de la prolactina:", "respuesta": "Péptido, favorece la secreción de leche materna."}, {"pregunta": "Lugar de acción de la TSH:", "respuesta": "Glándula tiroides."}, {"pregunta": "La hormona glucagón se caracteriza por:", "respuesta": "Actuar sobre el hígado."}, {"pregunta": "¿Qué estructura química es la insulina?", "respuesta": "Péptido."}, {"pregunta": "¿Cuál de las siguientes hormonas es un tipo de amina?", "respuesta": "Tiroxina."}, {"pregunta": "¿Cuál de los siguientes factores inhibe la secreción de la hormona de crecimiento?", "respuesta": "Incremento de ácidos grasos en sangre."}, {"pregunta": "Relacione: Hormona de crecimiento", "respuesta": "Estimula síntesis de proteínas."}, {"pregunta": "Relacione: Hormona luteinizante", "respuesta": "Estimula síntesis de testosterona."}, {"pregunta": "Relacione: Hormona liberadora de tirotropina", "respuesta": "Estimula secreción de prolactina."}, {"pregunta": "Relacione: Hormona calcitonina", "respuesta": "Reduce el calcio extracelular."}, {"pregunta": "Relacione: Hormona paratiroidea", "respuesta": "Libera calcio de los huesos."}, {"pregunta": "Relacione: Hormona folículo estimulante", "respuesta": "Induce crecimiento de las gónadas."}, {"pregunta": "Relacione: Hormona luteinizante", "respuesta": "Estimula síntesis de testosterona."}, {"pregunta": "Relacione: Estrógenos", "respuesta": "Estimula desarrollo órganos femeninos."}, {"pregunta": "Relacione: Somatostatina", "respuesta": "Inhibe a la hormona de crecimiento."}, {"pregunta": "Relacione: Hormona liberadora gonadotropinas", "respuesta": "Estimula la liberación de luteinizante."}, {"pregunta": "Relacione: Prolactina", "respuesta": "Favorece la secreción de leche materna."}, {"pregunta": "Relacione: Folículo estimulante", "respuesta": "Induce crecimiento de las gónadas."}, {"pregunta": "Relacione: Luteinizante", "respuesta": "Estimula síntesis de testosterona."}, {"pregunta": "Relacione: Parathormona", "respuesta": "Libera calcio de los huesos."}, {"pregunta": "Relacione: Calcitonina", "respuesta": "Reduce concentración de Calcio extracelular."}, {"pregunta": "Relacione: Parathormona", "respuesta": "Aumenta absorción de calcio intestinal."}, {"pregunta": "Relacione: Corticótropas", "respuesta": "Estimula la generación de andrógenos."}, {"pregunta": "Relacione: Tirótropas", "respuesta": "Estimula la producción de hormonas tiroideas."}, {"pregunta": "Relacione: Gonadótropas", "respuesta": "Regula la espermatogenia testicular."}, {"pregunta": "Relacione: Calcitonina", "respuesta": "Reduce la concentración de calcio extracelular."}]}, "fisiologia": {"label": "Fisiología", "aliases": ["fisiologia", "fisiología"], "preguntas": [{"pregunta": "¿Qué tipos de potenciales de acción son característicos en las fibras musculares cardíacas?", "respuesta": "Meseta"}, {"pregunta": "¿Con que otro nombre se conoce al haz de Bachman?", "respuesta": "Banda interauricular anterior"}, {"pregunta": "¿De qué no depende el Batmotropismo?", "respuesta": "Del nodo sinusal"}, {"pregunta": "Termino que se emplea para describir a la capacidad que tiene un tejido de generar sus propios estímulos. Automatismo", "respuesta": "Automatismo"}, {"pregunta": "¿Con qué fibras se comparan a las fibras internodulares?", "respuesta": "Purkinje"}, {"pregunta": "¿Cuál se considera el primer evento del ciclo cardíaco?", "respuesta": "Diástole auricular"}, {"pregunta": "¿Qué fase al finalizar me indica el final de la sístole ventricular?", "respuesta": "Eyección lenta"}, {"pregunta": "¿Cómo se denomina al volumen total de sangre presente en el ventrículo al final de la diástole?", "respuesta": "Diastólico final/Telediastólico/Precarga"}, {"pregunta": "Nombre las células encargadas de detectar un cambio en la postura del cuerpo por variaciones en la presión arterial.", "respuesta": "Barorreceptores"}, {"pregunta": "Termino que hace referencia a la capacidad que el ventrículo tiene de expandirse y llenarse durante la diástole.", "respuesta": "Distensibilidad"}, {"pregunta": "¿En qué período se presenta un aumento de la presión sistólica y una disminución de la presión ventricular?", "respuesta": "Período de eyección"}, {"pregunta": "¿En dónde se sitúa el nodo sinusal dentro del corazón?", "respuesta": "Aurícula derecha"}, {"pregunta": "En el ciclo cardíaco ¿De cuánto es el volumen sistólico?", "respuesta": "Aproximadamente 70 ml"}, {"pregunta": "¿Cuál es considerada la primera fase del ciclo cardíaco?", "respuesta": "Diástole auricular"}, {"pregunta": "¿Con qué otro nombre se conoce a la protodiástole?", "respuesta": "Eyección lenta"}, {"pregunta": "Válvulas se abren en la fase de eyección ventricular rápida.", "respuesta": "Semilunares/Pulmonar-aórtica"}, {"pregunta": "Período donde disminuye rápidamente las presiones intraventriculares y regresan a sus bajos valores diastólicos.", "respuesta": "Relajación isovolumétrica"}, {"pregunta": "Tipo de flujo sanguíneo en el cual se puede apreciar erosión de las paredes internas del vaso.", "respuesta": "Flujo turbulento"}, {"pregunta": "¿Qué sucede con la resistencia vascular periférica de un vaso sanguíneo cuando este último se dilata?", "respuesta": "Disminuye"}, {"pregunta": "Término que describe la propiedad del músculo cardíaco de generar sus propios estímulos.", "respuesta": "Automatismo"}, {"pregunta": "¿Cuál es la principal causa del flujo sanguíneo turbulento que ocurre en los vasos?", "respuesta": "Erosión"}, {"pregunta": "¿Qué representa el intervalo P-R del electrocardiograma?", "respuesta": "Inicio de la excitación eléctrica auricular y el inicio de la excitación eléctrica ventricular."}, {"pregunta": "En el electrocardiograma ¿Qué me representa la onda T?", "respuesta": "La repolarización de los ventrículos."}, {"pregunta": "¿Qué ocurre en la fase 0 del potencial de acción cardíaco?", "respuesta": "Se abren los canales de sodio y calcio."}, {"pregunta": "¿En qué células cardíacas encontramos mayor automaticidad?", "respuesta": "Células P."}, {"pregunta": "¿Cuál o cuáles válvulas se encuentran abiertas durante la sístole auricular derecha?", "respuesta": "La válvula bicúspide y tricúspide."}, {"pregunta": "¿Qué debe ocurrir para que las válvulas semilunares se abran en el ciclo cardíaco?", "respuesta": "La presión ventricular debe superar a la presión de la aorta y arteria pulmonar."}, {"pregunta": "¿Qué ocurre en la fase lenta de la eyección ventricular?", "respuesta": "La presión ventricular desciende."}, {"pregunta": "¿Cuál de las siguientes estructuras producirá en el corazón la contracción auricular?", "respuesta": "Haz internodular."}, {"pregunta": "¿Cuál de las siguientes afirmaciones sobre el músculo cardíaco es la más exacta?.", "respuesta": "La contracción depende de la cantidad de calcio que rodea a los miocitos cardíacos."}, {"pregunta": "¿Qué sucede al final de la relajación isovolumétrica ventricular?.", "respuesta": "La válvula mitral se abre."}, {"pregunta": "¿Qué provoca, normalmente, la estimulación simpática del corazón?.", "respuesta": "Aumento de la fuerza de contracción de los ventrículos."}, {"pregunta": "¿Cuánto es el valor aproximado del llenado ventricular que es realizado por la contracción auricular?", "respuesta": "Aproximadamente 20%."}, {"pregunta": "¿Qué caracteriza a la capacitancia?", "respuesta": "Inversamente proporcional a la elastancia."}, {"pregunta": "¿Cuál de los siguientes efectos no aumenta la presión arterial?", "respuesta": "Ninguna de las respuestas es correcta."}, {"pregunta": "¿En cuánto tiempo retrasa el impulso el nodo atrioventricular?", "respuesta": "Aproximadamente 0,12 segundos."}, {"pregunta": "¿En la diástole auricular, cual es el porcentaje aproximado de sangre que fluye directamente de las venas a los ventrículos?", "respuesta": "Aproximadamente un 80%."}, {"pregunta": "¿Qué sucede durante la sístole ventricular?", "respuesta": "Las válvulas cúspides se cierran."}, {"pregunta": "¿Cuál de las siguientes ondas o complejos del electrocardiograma representa la repolarización ventricular y su relajación?", "respuesta": "Onda T."}, {"pregunta": "¿Cuál de las siguientes válvulas cardíacas permanece cerrada mientras el ventrículo izquierdo se encuentra en diástole?", "respuesta": "Válvula aórtica."}, {"pregunta": "Con respecto al estudio del corazón (electrofisiología cardiaca), ¿Cuál de las siguientes ondas representa la despolarización de los ventrículos?.", "respuesta": "Complejo QRS."}, {"pregunta": "¿Cuál de los siguientes enunciados corresponde al ciclo cardíaco?", "respuesta": "La frecuencia cardíaca es inversamente proporcional al tiempo del ciclo cardíaco."}, {"pregunta": "¿Cuál de los siguientes enunciados es incorrecto respecto a los músculos papilares?", "respuesta": "Contribuyen al cierre de las válvulas."}, {"pregunta": "¿Qué enunciado caracteriza a la precarga?", "respuesta": "Es la presión telediastólico."}, {"pregunta": "¿Qué iones provocan la autoexcitación del nodo sinusal?", "respuesta": "El calcio y el sodio."}, {"pregunta": "¿De qué no depende el Batmotropismo?", "respuesta": "Del nodo sinusal."}, {"pregunta": "¿En qué periodo del ciclo cardíaco se produce aumento de la tensión en el músculo cardíaco, pero no produce el vaciado de la cavidad?", "respuesta": "Período de contracción isovolumétrica."}, {"pregunta": "¿Cuál de los siguientes enunciados no corresponde al período de eyección en el ciclo cardíaco?", "respuesta": "Válvula aortica se cierra."}, {"pregunta": "Además de los nervios simpáticos, angiotensina II y vasopresina, el flujo sanguíneo en condiciones fisiológicas está determinado por necesidades:", "respuesta": "Metabólicas."}, {"pregunta": "¿En qué parte del E.C.G. podemos apreciar la repolarización de las aurículas?", "respuesta": "En ninguna de las opciones escritas."}, {"pregunta": "¿Cuál de las siguientes estructuras tendrá la menor velocidad de conducción del potencial de acción cardíaco?", "respuesta": "Fibras del haz AV."}, {"pregunta": "Relacione: Nódulo sinusal", "respuesta": "Aproximadamente 0,05 m/s."}, {"pregunta": "Relacione: Miocardio auricular", "respuesta": "de 0,8 a 1,0 m/s aproximadamente."}, {"pregunta": "Relacione: Nódulo atrioventricular", "respuesta": "de 0,05 a 1,0 m/s aproximadamente."}, {"pregunta": "Relacione: Fibras de Purkinje", "respuesta": "de 2,0 a 4,0 m/s aproximadamente."}, {"pregunta": "Relacione: Miocardio ventricular", "respuesta": "de 0,5 a 1,0 m/s aproximadamente."}, {"pregunta": "Relacione: Periodo de eyección", "respuesta": "La presión ventricular abre la válvula semilunar."}, {"pregunta": "Relacione: Relajación isovolumétrica", "respuesta": "Disminución de la presión intraventricular."}, {"pregunta": "Relacione: Contracción isovolumétrica", "respuesta": "Aumento de la presión ventricular."}, {"pregunta": "Relacione: Periodo de diástole", "respuesta": "La presión ventricular abre la válvula atrioventricular."}, {"pregunta": "Relacione: Diástasis", "respuesta": "Fase prolongada del ciclo cardíaco."}, {"pregunta": "Relacione: Finaliza repolarización ventricular", "respuesta": "Relajación ventricular isovolumétrica."}, {"pregunta": "Relacione: Válvulas cardíacas cerradas", "respuesta": "Contracción ventricular isovolumétrica."}, {"pregunta": "Relacione: Máximo valor en la presión ventricular", "respuesta": "Eyección ventricular rápida."}, {"pregunta": "Relacione: Fase prolongada del ciclo cardíaco", "respuesta": "Diástasis."}, {"pregunta": "Relacione: Abertura de la válvula bicúspide", "respuesta": "Llenado ventricular rápido."}, {"pregunta": "Relacione: Capacidad del corazón de responder a un estímulo adecuado", "respuesta": "Batmotropismo."}, {"pregunta": "Relacione: Capacidad del músculo cardíaco para relajarse", "respuesta": "Lusitropismo."}, {"pregunta": "Relacione: Capacidad del corazón para contraerse", "respuesta": "Inotropismo."}, {"pregunta": "Relacione: Capacidad de las células cardíacas de contraerse con frecuencia", "respuesta": "Cronotropismo."}, {"pregunta": "Relacione: Capacidad del corazón para conducir el impulso eléctrico", "respuesta": "Dromotropismo."}, {"pregunta": "Relacione: Fase 0", "respuesta": "Despolarización rápida."}, {"pregunta": "Relacione: Fase 1", "respuesta": "Repolarización inicial."}, {"pregunta": "Relacione: Fase 2", "respuesta": "Meseta."}, {"pregunta": "Relacione: Fase 3", "respuesta": "Repolarización rápida."}, {"pregunta": "Relacione: Fase 4", "respuesta": "Potencial de reposo."}, {"pregunta": "Relacione: Sístole", "respuesta": "0,27 segundos."}, {"pregunta": "Relacione: Diástole", "respuesta": "0,53 segundos."}, {"pregunta": "Relacione: Eyección", "respuesta": "0,22 segundos."}, {"pregunta": "Relacione: Llenado ventricular", "respuesta": "0,34 segundos."}, {"pregunta": "Relacione: Relajación isométrica", "respuesta": "0,10 segundos."}, {"pregunta": "¿En qué órganos es producida en mayor concentración la enzima convertidora de angiotensina?", "respuesta": "Pulmones"}, {"pregunta": "¿En dónde se cataliza la conversión de angiotensina I a angiotensina II principalmente?", "respuesta": "Pulmones"}, {"pregunta": "¿Cuál es el ion más importante en la composición del surfactante?", "respuesta": "Calcio"}, {"pregunta": "En el transporte de CO2 ¿Quién cataliza la reacción de CO2 con el agua?", "respuesta": "Anhidrasa carbónica"}, {"pregunta": "¿Cómo se llamada a la estructura constituida por un bronquio respiratorio, conductos alveolares y alvéolos?", "respuesta": "Unidad respiratoria"}, {"pregunta": "¿Para que ocurra un aumento del flujo sanguíneo cerebral que ion debe estar en concentraciones bajas?", "respuesta": "Oxígeno"}, {"pregunta": "¿Qué reflejo utiliza receptores de estiramiento en los bronquios para detener la inspiración excesiva?", "respuesta": "Reflejo de insuflación de Hering-Breuer"}, {"pregunta": "Los quimiorreceptores centrales se caracterizan por:", "respuesta": "No detectan cambios de pO2 y detectan cambios de pCO2 de forma indirecta."}, {"pregunta": "¿Dónde se encuentra el centro respiratorio encargado de emitir señales de \"rampa\" para la inspiración normal?", "respuesta": "Grupo respiratorio dorsal."}, {"pregunta": "¿Cuál es la función principal del centro neumotáxico en la protuberancia?", "respuesta": "Limitar la duración de la inspiración."}, {"pregunta": "¿En qué situación se activa principalmente el grupo respiratorio ventral?", "respuesta": "Necesidad de niveles altos de ventilación."}, {"pregunta": "¿Qué reflejo utiliza receptores de estiramiento en los bronquios para detener la inspiración excesiva?", "respuesta": "Reflejo de insuflación de Hering-Breuer."}, {"pregunta": "¿Cuál es el estímulo directo más potente que actúa sobre la zona quimio sensible del centro respiratorio?", "respuesta": "Iones hidrógeno."}, {"pregunta": "Aunque el CO₂ estimula la zona quimio sensible, lo hace de forma indirecta porque:", "respuesta": "El CO₂ atraviesa la barrera y reacciona con agua para formar H+, que es el estímulo real."}, {"pregunta": "¿Dónde se localizan los quimiorreceptores periféricos que detectan cambios en el oxígeno arterial?", "respuesta": "En los cuerpos carotídeos y aórticos."}, {"pregunta": "¿A qué nivel de presión parcial de oxígeno (PO₂) arterial se activan intensamente los quimiorreceptores periféricos?", "respuesta": "Por debajo de 60 mmHg."}, {"pregunta": "Durante el ejercicio intenso, el aumento de la ventilación se debe principalmente a:", "respuesta": "Señales neurógenas directas de la corteza motora al centro respiratorio."}, {"pregunta": "¿Qué sucede con la respuesta ventilatoria al CO₂ después de varios días de exposición a niveles altos (climatización)?", "respuesta": "El centro respiratorio pierde gran parte de su sensibilidad por reajuste renal de bicarbonato."}, {"pregunta": "La angiotensina II provoca que se eleve la resistencia vascular periférica debido a que es un potente agente:", "respuesta": "Vasoconstrictor"}, {"pregunta": "¿En qué órganos es producida la angiotensinogenasa?", "respuesta": "Riñones"}, {"pregunta": "Nombre de la enzima que cataliza la conversión de angiotensinógeno en angiotensina I en el plasma.", "respuesta": "Renina"}, {"pregunta": "¿Con qué otro nombre se conoce a la renina?", "respuesta": "Angiotensinogenasa"}, {"pregunta": "Hormona sintetizada por las células yuxtaglomerulares en situaciones de baja volemia o presión arterial.", "respuesta": "Renina"}, {"pregunta": "¿Qué ion en el túbulo contorneado proximal se reabsorbe en paralelo al sodio y agua?.", "respuesta": "Calcio"}, {"pregunta": "Término para describir la excreción de orina en términos cuantitativos y cualitativos en un tiempo determinado.", "respuesta": "Diuresis"}, {"pregunta": "¿Dónde se reabsorbe la mayor cantidad de agua en la nefrona?", "respuesta": "Túbulo proximal"}, {"pregunta": "¿Qué porción del túbulo distal excreta potasio?", "respuesta": "Porción distal o final"}, {"pregunta": "La rama descendente del Asa de Henle cuando pasa el agua se caracteriza por ser", "respuesta": "Permeable"}, {"pregunta": "El plasma se filtra en la cápsula glomerular a través de los capilares glomerulares, este llega a través de la arteriola:", "respuesta": "Aferente"}, {"pregunta": "¿Cuál es la fórmula del ácido carbónico?", "respuesta": "H2CO3"}, {"pregunta": "La anhidrasa carbónica juega un papel importante en el equilibrio ácido base, ella se encuentra en:", "respuesta": "En la mayoría de las células."}, {"pregunta": "Cuando aumenta la ingesta de potasio en la dieta, el equilibrio del potasio se mantiene mediante la excreción de este. ¿Cuál es el principal mecanismo por el que tiene lugar la excreción?", "respuesta": "Aumento de la secreción de potasio en los túbulos contorneados distales."}, {"pregunta": "¿Qué cambio esperaría encontrar en una persona deshidratada privada de agua durante 24 horas?", "respuesta": "Aumento de la permeabilidad al agua en el tubo colector."}, {"pregunta": "¿Qué mecanismo provoca aumento del flujo sanguíneo renal y del filtrado glomerular?", "respuesta": "Dilatación de las arteriolas aferentes."}, {"pregunta": "¿Cuál de las siguientes hormonas aumenta la secreción de potasio?", "respuesta": "Aldosterona."}, {"pregunta": "¿Cuál de los siguientes factores me puede reducir la filtración glomerular?", "respuesta": "Aumento de la presión oncótica del capilar glomerular."}, {"pregunta": "En los riñones normalmente, la concentración de Na+ que circula en el TCD con respecto al Na+ que está circulando en el plasma de la arteriola aferente en el mismo momento es:", "respuesta": "Menor."}, {"pregunta": "Normalmente, cuando en el organismo se detecta un incremento de las concentraciones de K+ debido a la ingesta en la dieta, el exceso de este es:", "respuesta": "Secretado por el TCD."}, {"pregunta": "Un joven corre 10 km en un día caluroso necesita líquido en el cuerpo debido a que se deshidrata. Sus riñones funcionan normalmente y presenta altas concentraciones de ADH, ¿En qué parte de los túbulos renales se reabsorbe mayor cantidad de agua?", "respuesta": "Túbulo contorneado proximal."}, {"pregunta": "¿Cuál es el pH óptimo en el cuerpo?", "respuesta": "7.40."}, {"pregunta": "¿Qué me indica un acidemia?", "respuesta": "Un nivel alto en la concentración de hidrogeno en sangre."}, {"pregunta": "¿Qué mecanismo no determina la presión hidrostática glomerular?", "respuesta": "Todas determinan la presión hidrostática."}, {"pregunta": "¿Cuál de los siguientes enunciados es incorrecto respecto al equilibrio ácido base?", "respuesta": "El aumento de la ventilación alveolar reduce el pH."}, {"pregunta": "¿En dónde se ubica la macula densa?", "respuesta": "En la porción inicial del túbulo contorneado distal."}, {"pregunta": "Si tengo niveles de ADH muy elevados y los riñones funcionan normalmente, ¿en qué parte del túbulo renal se reabsorbe el máximo de agua?.", "respuesta": "Túbulo proximal."}, {"pregunta": "La mayor parte del filtrado glomerular se reabsorbe en:", "respuesta": "El túbulo proximal."}, {"pregunta": "¿Cuál de las siguientes situaciones provocaría un descenso máximo en la FG en una persona en la que, por lo demás, los riñones no presentan anomalías?.", "respuesta": "Disminución del 50% en la resistencia arteriolar eferente."}, {"pregunta": "Cuando aumenta la ingesta de potasio en la dieta, el equilibrio del potasio se mantiene mediante la excreción de este. ¿Cuál es el Disminución de la filtración glomerular de potasio. principal mecanismo por el que tiene lugar la excreción?", "respuesta": "Aumento de la secreción de potasio en los túbulos contorneados distales."}, {"pregunta": "¿Cuál de los siguientes enunciados es correcto respecto a la inulina?", "respuesta": "Se filtra a través del glomérulo y no se reabsorbe."}, {"pregunta": "¿Qué cambio esperaría encontrar en una persona deshidratada privada de agua durante 24 horas?", "respuesta": "Aumento de la permeabilidad al agua en el tubo colector."}, {"pregunta": "¿Qué mecanismo provoca aumento del flujo sanguíneo renal y del filtrado glomerular?", "respuesta": "Dilatación de las arteriolas aferentes."}, {"pregunta": "Relacione: Constricción de la arteriola aferente", "respuesta": "Disminuye la tasa de filtrado glomerular."}, {"pregunta": "Relacione: Expansión del volumen isoosmótico", "respuesta": "Sin cambios en el volumen del LIC."}, {"pregunta": "Relacione: Constricción de la arteriola eferente", "respuesta": "Aumenta la tasa de filtrado glomerular."}, {"pregunta": "Relacione: Expansión del volumen hiperosmótico", "respuesta": "Disminuye el volumen del LIC."}, {"pregunta": "Relacione: Expansión del volumen hipoosmótico", "respuesta": "Aumenta el volumen del LIC."}, {"pregunta": "¿Cuál es el estímulo habitual que ocasiona el peristaltismo en el intestino?", "respuesta": "Distensión"}, {"pregunta": "Nombre la enzima secretada por las glándulas salivales que cumple función de digerir los almidones del bolo alimenticio.", "respuesta": "Ptialina"}, {"pregunta": "Nombre de la sustancia que estimula de forma copiosa la secreción de bicarbonato.", "respuesta": "Secretina"}, {"pregunta": "Nombre del precursor de la enzima pepsina.", "respuesta": "Pepsinógeno"}, {"pregunta": "Escriba el nombre del factor básico que estimula la secreción gástrica a nivel neuronal.", "respuesta": "Acetilcolina"}, {"pregunta": "Fase de la secreción gástrica en la que tiene lugar la masticación y el paso del bolo alimenticio por el esófago.", "respuesta": "Cefálica"}, {"pregunta": "En la fase faríngea involuntaria de la deglución que orificios tapona el paladar blando cuando se eleva?", "respuesta": "Coanas"}, {"pregunta": "¿En qué fase de la deglución es que se interrumpe momentáneamente la respiración?", "respuesta": "Faríngea"}, {"pregunta": "Nombre de la hormona que se encarga de estimular la secreción de ácido clorhídrico por las células parietales.", "respuesta": "Gastrina"}, {"pregunta": "¿Cuál de las siguientes sustancias no forma parte de la saliva?.", "respuesta": "Pepsina."}, {"pregunta": "¿Cuál de los siguientes enunciados es correcto respecto a la secreción gástrica?", "respuesta": "La gastrina estimula la secreción de ácido clorhídrico de manera intensa."}, {"pregunta": "En la producción y secreción de saliva ¿Qué secretan las glándulas bucales?", "respuesta": "Solo moco."}, {"pregunta": "¿Cuál de las siguientes hormonas gastrointestinales estimula la secreción de moco?", "respuesta": "Gastrina."}, {"pregunta": "¿De qué depende las concentraciones elevadas de potasio en la saliva?", "respuesta": "Del intercambio con el sodio."}, {"pregunta": "¿Qué ion tiene la mayor concentración de saliva en condiciones basales, en comparación con el plasma?", "respuesta": "Potasio."}, {"pregunta": "¿Qué hormona contribuye al control de la secreción pancreática?", "respuesta": "Colecistocinina."}, {"pregunta": "¿Qué estimulo facilita e inicia los movimientos peristálticos habitualmente?", "respuesta": "La distensión."}, {"pregunta": "¿Cuál de los siguientes sistemas actúa como inhibidor del tubo digestivo?", "respuesta": "Sistema nervioso simpático."}, {"pregunta": "¿Cuál es el par craneal que se encarga de inervar el esófago, estómago, páncreas y porción superior del intestino delgado?", "respuesta": "Nervio neumogástrico."}, {"pregunta": "En la fase faríngea de la deglución, ¿Qué estructura es fundamental para determinar si un bolo de alimento es suficientemente pequeño para su deglución?", "respuesta": "Pliegues palatofaríngeos."}, {"pregunta": "La fase oral de la deglución finaliza cuando el bolo alimenticio entra en contacto con. Pliegues palatofaríngeos. Epiglotis. Paladar blando. Esfínter esofágico superior.", "respuesta": "Paladar blando."}, {"pregunta": "¿Cuántos músculos masticatorios participan en la formación del bolo alimenticio?", "respuesta": "8."}, {"pregunta": "¿Cuáles glándulas salivales segregan mayor cantidad en porcentaje de saliva normalmente?", "respuesta": "Glándulas submaxilares."}, {"pregunta": "¿Cuáles factores estimulan la secreción gástrica de ácido por las células parietales?", "respuesta": "Todas estimulan secreción gástrica."}, {"pregunta": "¿Qué secretan las células oxínticas del estómago?", "respuesta": "Ácido clorhídrico y factor intrínseco."}, {"pregunta": "Relacione: Ácido clorhídrico", "respuesta": "Estimula la secreción de gastrina."}, {"pregunta": "Relacione: Gastrina", "respuesta": "Estimula la secreción de hidrogeno."}, {"pregunta": "Relacione: Prostaglandinas", "respuesta": "Estimula la secreción de bicarbonato."}, {"pregunta": "Relacione: Colecistocinina", "respuesta": "Estimula la secreción de enzimas pancreáticas."}, {"pregunta": "Relacione: Lipasa lingual", "respuesta": "Producto ácidos grasos."}, {"pregunta": "Relacione: Secretina", "respuesta": "Inhibe la secreción de gastrina."}, {"pregunta": "Relacione: Colecistocinina", "respuesta": "Inhibe el vaciado gástrico."}, {"pregunta": "Relacione: Motilina", "respuesta": "Estimula la motilidad a nivel intestinal."}, {"pregunta": "Relacione: Histamina", "respuesta": "Estimula rápidamente la secreción de ácido clorhídrico."}, {"pregunta": "Relacione: Acetilcolina", "respuesta": "Estimula la secreción de pepsinógeno en las células pépticas."}, {"pregunta": "¿Qué hormona es responsable del aumento de la masa muscular en el hombre?", "respuesta": "Testosterona"}, {"pregunta": "¿Qué tipo de estructura química presenta la testosterona?", "respuesta": "Esteroide"}, {"pregunta": "¿En dónde se sintetiza la hormona de crecimiento?", "respuesta": "Adenohipófisis"}, {"pregunta": "Hormona producida por las células α del páncreas.", "respuesta": "Glucagón"}, {"pregunta": "Nombre de la hormona reguladora responsable de la reabsorción tubular de los fosfatos a nivel renal.", "respuesta": "Parathormona"}, {"pregunta": "Hormona que estimula las contracciones uterinas.", "respuesta": "Oxitocina"}, {"pregunta": "¿Qué estructura química tiene la prolactina?", "respuesta": "Péptido"}, {"pregunta": "¿A qué tipo de estimulación nerviosa se asemejan los efectos de la adrenalina y noradrenalina?", "respuesta": "Simpática"}, {"pregunta": "¿De qué precursor químico derivan todas las hormonas esteroideas?", "respuesta": "Colesterol"}, {"pregunta": "¿En qué parte de la célula se encuentran los receptores para las hormonas tiroideas?", "respuesta": "Núcleo o nucleares"}, {"pregunta": "¿Qué mecanismo de control evita la secreción excesiva de una hormona?", "respuesta": "Retroalimentación negativa"}, {"pregunta": "¿Cuál es la naturaleza química de la insulina y el glucagón?", "respuesta": "Péptidos"}, {"pregunta": "¿Qué tipo de hormonas se almacenan en vesículas secretoras hasta que se necesitan?", "respuesta": "Proteicas"}, {"pregunta": "¿Cómo se llaman los mensajeros que actúan sobre células vecinas del mismo tejido?", "respuesta": "Paracrinas"}, {"pregunta": "¿Qué proceso reduce el número de receptores activos ante un exceso de hormona?", "respuesta": "Regulación a la baja o downregulation"}, {"pregunta": "La hormona glucagón se caracteriza por:", "respuesta": "Actuar sobre el hígado y tejido adiposo."}, {"pregunta": "¿Sobre qué estructura actúa la insulina?.", "respuesta": "Sobre todas las estructuras escritas."}, {"pregunta": "Características de la prolactina:", "respuesta": "Péptido, favorece la secreción de leche materna."}, {"pregunta": "Lugar de acción de la TSH:", "respuesta": "Glándula tiroides."}, {"pregunta": "La hormona glucagón se caracteriza por:", "respuesta": "Actuar sobre el hígado."}, {"pregunta": "¿Qué estructura química es la insulina?", "respuesta": "Péptido."}, {"pregunta": "¿Cuál de las siguientes hormonas es un tipo de amina?", "respuesta": "Tiroxina."}, {"pregunta": "¿Cuál de los siguientes factores inhibe la secreción de la hormona de crecimiento?", "respuesta": "Incremento de ácidos grasos en sangre."}, {"pregunta": "Relacione: Hormona de crecimiento", "respuesta": "Estimula síntesis de proteínas."}, {"pregunta": "Relacione: Hormona luteinizante", "respuesta": "Estimula síntesis de testosterona."}, {"pregunta": "Relacione: Hormona liberadora de tirotropina", "respuesta": "Estimula secreción de prolactina."}, {"pregunta": "Relacione: Hormona calcitonina", "respuesta": "Reduce el calcio extracelular."}, {"pregunta": "Relacione: Hormona paratiroidea", "respuesta": "Libera calcio de los huesos."}, {"pregunta": "Relacione: Hormona folículo estimulante", "respuesta": "Induce crecimiento de las gónadas."}, {"pregunta": "Relacione: Hormona luteinizante", "respuesta": "Estimula síntesis de testosterona."}, {"pregunta": "Relacione: Estrógenos", "respuesta": "Estimula desarrollo órganos femeninos."}, {"pregunta": "Relacione: Somatostatina", "respuesta": "Inhibe a la hormona de crecimiento."}, {"pregunta": "Relacione: Hormona liberadora gonadotropinas", "respuesta": "Estimula la liberación de luteinizante."}, {"pregunta": "Relacione: Prolactina", "respuesta": "Favorece la secreción de leche materna."}, {"pregunta": "Relacione: Folículo estimulante", "respuesta": "Induce crecimiento de las gónadas."}, {"pregunta": "Relacione: Luteinizante", "respuesta": "Estimula síntesis de testosterona."}, {"pregunta": "Relacione: Parathormona", "respuesta": "Libera calcio de los huesos."}, {"pregunta": "Relacione: Calcitonina", "respuesta": "Reduce concentración de Calcio extracelular."}, {"pregunta": "Relacione: Parathormona", "respuesta": "Aumenta absorción de calcio intestinal."}, {"pregunta": "Relacione: Corticótropas", "respuesta": "Estimula la generación de andrógenos."}, {"pregunta": "Relacione: Tirótropas", "respuesta": "Estimula la producción de hormonas tiroideas."}, {"pregunta": "Relacione: Gonadótropas", "respuesta": "Regula la espermatogenia testicular."}, {"pregunta": "Relacione: Calcitonina", "respuesta": "Reduce la concentración de calcio extracelular."}]}, "parasitologia": {"label": "Parasitología", "aliases": ["parasitologia", "parasitología"], "preguntas": []}, "citologia": {"label": "Citología / Histología", "aliases": ["citologia", "citología", "histologia", "histología"], "preguntas": []}, "psicologia": {"label": "Psicología", "aliases": ["psicologia", "psicología"], "preguntas": []}, "epidemiologia": {"label": "Epidemiología", "aliases": ["epidemiologia", "epidemiología"], "preguntas": []}, "quimica": {"label": "Química", "aliases": ["quimica", "química"], "preguntas": []}};
+
+  function encontrarMateria(texto){
+    const t = normalizar(texto);
+    let mejor = null;
+    for (const key in MATERIAS) {
+      const m = MATERIAS[key];
+      for (const alias of m.aliases) {
+        if (t.includes(normalizar(alias))) {
+          if (!mejor || alias.length > mejor.aliasLen) mejor = { key, aliasLen: alias.length };
+        }
+      }
+    }
+    return mejor ? mejor.key : null;
+  }
+
+  function mezclar(arr){
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  const PALABRAS_VACIAS = new Set(['de','la','el','los','las','en','y','a','del','al','que','un','una','se','su','con','por','o','es','son','para','no']);
+
+  function palabrasClave(texto){
+    return normalizar(texto)
+      .replace(/[^a-z0-9ñ\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !PALABRAS_VACIAS.has(w));
+  }
+
+  function evaluarCoincidencia(respuestaUsuario, respuestaCorrecta){
+    const claves = palabrasClave(respuestaCorrecta);
+    if (claves.length === 0) return false;
+    const textoUsuario = normalizar(respuestaUsuario);
+    let coincide = 0;
+    claves.forEach(c => { if (textoUsuario.includes(c)) coincide++; });
+    const ratio = coincide / claves.length;
+    // Para respuestas muy cortas (1-2 palabras clave) exigir coincidencia total
+    if (claves.length <= 2) return ratio === 1;
+    return ratio >= 0.5;
+  }
+
+  /* =========================================================
+     MÁQUINA DE ESTADOS DE LA CONVERSACIÓN
+     ========================================================= */
+  const ESTADO = { IDLE: 'IDLE', ESPERANDO_MATERIA: 'ESPERANDO_MATERIA', ESPERANDO_RESPUESTA: 'ESPERANDO_RESPUESTA' };
+  let estado = ESTADO.IDLE;
+  let materiaActualKey = null;
+  let colaPreguntas = [];
+  let preguntaActual = null;
+
+  const FRASES_CORRECTO = [
+    'Correcto, señor.',
+    'Así es, señor. Bien hecho.',
+    'Exacto, señor.',
+    'Perfecto, señor.'
+  ];
+  const FRASES_INCORRECTO = [
+    'Esa no es, señor. Debo decir que estoy decepcionado.',
+    'Incorrecto, señor. Sigamos con la siguiente.',
+    'Me temo que no, señor.',
+    'No es correcta, señor.'
+  ];
+
+  function saludo(){
+    const h = new Date().getHours();
+    if (h < 12) return 'Buenos días, señor.';
+    if (h < 19) return 'Buenas tardes, señor.';
+    return 'Buenas noches, señor.';
+  }
+
+  function actualizarBadge(){
+    if (materiaActualKey && MATERIAS[materiaActualKey]) {
+      materiaBadge.innerHTML = 'Materia: <b>' + MATERIAS[materiaActualKey].label + '</b>';
+    } else {
+      materiaBadge.textContent = '';
+    }
+  }
+
+  function iniciarConversacion(){
+    estado = ESTADO.ESPERANDO_MATERIA;
+    materiaActualKey = null;
+    actualizarBadge();
+    hablar(saludo() + ' ¿Qué materia deseas estudiar hoy, señor?', () => escucharComando());
+  }
+
+  function prepararCola(key){
+    materiaActualKey = key;
+    colaPreguntas = mezclar(MATERIAS[key].preguntas);
+    actualizarBadge();
+  }
+
+  function siguientePregunta(){
+    if (colaPreguntas.length === 0) {
+      colaPreguntas = mezclar(MATERIAS[materiaActualKey].preguntas);
+    }
+    preguntaActual = colaPreguntas.pop();
+    estado = ESTADO.ESPERANDO_RESPUESTA;
+    hablar(preguntaActual.pregunta, () => escucharComando());
+  }
+
+  function esComandoApagar(texto){
+    const t = normalizar(texto);
+    return /apaga|apagate|apágate/.test(t);
+  }
+
+  function procesarMateria(texto){
+    if (esComandoApagar(texto)) { apagarSistema(); return; }
+    const key = encontrarMateria(texto);
+    if (!key) {
+      hablar('No reconozco esa materia, señor. ¿Podrías repetirla?', () => escucharComando());
+      return;
+    }
+    if (!MATERIAS[key].preguntas.length) {
+      hablar('Aún no tengo un banco de preguntas para ' + MATERIAS[key].label + ', señor. ¿Qué otra materia deseas estudiar?', () => escucharComando());
+      return;
+    }
+    prepararCola(key);
+    hablar('Perfecto, señor. Estudiaremos ' + MATERIAS[key].label + '.', () => siguientePregunta());
+  }
+
+  function procesarRespuesta(texto){
+    if (esComandoApagar(texto)) { apagarSistema(); return; }
+    const correcto = evaluarCoincidencia(texto, preguntaActual.respuesta);
+    const frase = correcto
+      ? FRASES_CORRECTO[Math.floor(Math.random() * FRASES_CORRECTO.length)]
+      : FRASES_INCORRECTO[Math.floor(Math.random() * FRASES_INCORRECTO.length)];
+    const completo = frase + ' La respuesta correcta era: ' + preguntaActual.respuesta;
+    hablar(completo, () => siguientePregunta());
+  }
+
+  function apagarSistema(){
+    estado = ESTADO.IDLE;
+    materiaActualKey = null;
+    preguntaActual = null;
+    actualizarBadge();
+    statusEl.innerHTML = '<b>Escuchando</b> — aplaude cerca del micrófono';
+    hablar('Como digas, señor. Aquí estaré cuando me necesites.');
+  }
+
+  /* --- Reconocimiento de voz --- */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let reconocedor = null;
   if (SR) {
@@ -466,38 +612,35 @@
     reconocedor.interimResults = false;
   }
 
-  // Reglas simples de comando -> respuesta (palabra clave incluida en lo que dijiste)
-  const COMANDOS = [
-    { claves: ['hola', 'buenas'], respuesta: '¡Hola! ¿En qué te ayudo?' },
-    { claves: ['estado', 'como estas', 'cómo estás'], respuesta: 'Todos los sistemas funcionando con normalidad.' },
-    { claves: ['gracias'], respuesta: 'A la orden, cuando quieras.' },
-    { claves: ['hora'], respuesta: () => `Son las ${new Date().toLocaleTimeString('es-PA',{hour:'2-digit',minute:'2-digit'})}.` },
-    { claves: ['adios', 'adiós', 'hasta luego'], respuesta: 'Hasta luego. Aquí estaré si me necesitas.' },
-  ];
+  function escucharComando(){
+    if (!reconocedor || estado === ESTADO.IDLE) return;
+    statusEl.innerHTML = '<span class="listen-indicator"><span class="listen-dot"></span> Escuchando, señor…</span>';
+    try { reconocedor.start(); } catch(e) { /* ya estaba activo */ }
+  }
 
-  // --- Base de conocimiento por materias (Fisiología, Parasitología, etc.) ---
+  if (reconocedor) {
+    reconocedor.onresult = (event) => {
+      const texto = event.results[0][0].transcript;
+      captionEl.textContent = `Escuché: "${texto}"`;
+      if (estado === ESTADO.ESPERANDO_MATERIA) procesarMateria(texto);
+      else if (estado === ESTADO.ESPERANDO_RESPUESTA) procesarRespuesta(texto);
+    };
+    reconocedor.onerror = () => {
+      if (estado !== ESTADO.IDLE) {
+        setTimeout(() => escucharComando(), 700);
+      }
+    };
+    reconocedor.onend = () => {
+      // El reinicio real ocurre tras hablar() tanto en éxito como en error;
+      // esto es solo una red de seguridad ante silencios sin resultado ni error.
+    };
+  }
+
+  /* =========================================================
+     Conocimiento libre por palabra clave (panel opcional)
+     ========================================================= */
   const CLAVE_STORAGE = 'jarvis_conocimiento_v1';
-
-  const SEMILLA_CONOCIMIENTO = [
-    { materia: 'Fisiología', claves: ['nefrona', 'unidad funcional del riñon', 'unidad funcional del riñón'],
-      pregunta: '¿Qué es la nefrona?',
-      respuesta: 'La nefrona es la unidad funcional y estructural del riñón, encargada de filtrar la sangre y formar la orina.' },
-    { materia: 'Parasitología', claves: ['tecnica de ritchie', 'técnica de ritchie'],
-      pregunta: '¿Para qué sirve la técnica de Ritchie?',
-      respuesta: 'La técnica de Ritchie es un método de concentración por sedimentación que se usa para detectar huevos y quistes de parásitos en heces.' },
-    { materia: 'Citología / Histología', claves: ['gastritis'],
-      pregunta: '¿Qué es la gastritis?',
-      respuesta: 'La gastritis es la inflamación de la mucosa gástrica, que puede ser aguda o crónica y suele estudiarse mediante biopsia y citología.' },
-    { materia: 'Psicología', claves: ['memoria a corto plazo'],
-      pregunta: '¿Qué es la memoria a corto plazo?',
-      respuesta: 'La memoria a corto plazo retiene información por segundos o minutos, con una capacidad limitada, antes de pasar o no a la memoria a largo plazo.' },
-    { materia: 'Epidemiología', claves: ['incidencia', 'prevalencia'],
-      pregunta: '¿Cuál es la diferencia entre incidencia y prevalencia?',
-      respuesta: 'La incidencia mide los casos nuevos de una enfermedad en un periodo, mientras que la prevalencia mide el total de casos existentes, nuevos y antiguos, en un momento dado.' },
-    { materia: 'Química', claves: ['ph', 'potencial de hidrogeno', 'potencial de hidrógeno'],
-      pregunta: '¿Qué mide el pH?',
-      respuesta: 'El pH mide qué tan ácida o básica es una solución, en una escala de 0 a 14, según la concentración de iones hidrógeno.' },
-  ];
+  const SEMILLA_CONOCIMIENTO = [];
 
   function cargarConocimiento(){
     try {
@@ -506,38 +649,12 @@
     } catch(e) { /* localStorage no disponible o dato corrupto */ }
     return SEMILLA_CONOCIMIENTO.slice();
   }
-
   function guardarConocimiento(){
     try { localStorage.setItem(CLAVE_STORAGE, JSON.stringify(CONOCIMIENTO)); }
     catch(e) { console.warn('No se pudo guardar en localStorage', e); }
   }
-
   let CONOCIMIENTO = cargarConocimiento();
 
-  function normalizar(s){
-    return s.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // quita tildes para comparar mejor
-  }
-
-  function responderComando(texto){
-    const t = normalizar(texto);
-
-    // 1) Base de conocimiento de materias primero (más específico)
-    const item = CONOCIMIENTO.find(c => c.claves.some(k => t.includes(normalizar(k))));
-    if (item) { hablar(item.respuesta); return; }
-
-    // 2) Comandos generales tipo Jarvis
-    const match = COMANDOS.find(c => c.claves.some(k => t.includes(normalizar(k))));
-    if (match) {
-      const resp = typeof match.respuesta === 'function' ? match.respuesta() : match.respuesta;
-      hablar(resp);
-      return;
-    }
-
-    hablar('No tengo una respuesta lista para eso todavía. Puedes agregarla en el panel de materias.');
-  }
-
-  // --- Interfaz del panel de materias ---
   const panelToggle = document.getElementById('panelToggle');
   const panelOverlay = document.getElementById('panelOverlay');
   const cerrarPanel = document.getElementById('cerrarPanel');
@@ -575,26 +692,15 @@
     });
   }
 
-  panelToggle.addEventListener('click', () => {
-    panelOverlay.classList.add('open');
-    renderLista();
-  });
+  panelToggle.addEventListener('click', () => { panelOverlay.classList.add('open'); renderLista(); });
   cerrarPanel.addEventListener('click', () => panelOverlay.classList.remove('open'));
   panelOverlay.addEventListener('click', (e) => { if (e.target === panelOverlay) panelOverlay.classList.remove('open'); });
 
   agregarBtn.addEventListener('click', () => {
     const claves = fClaves.value.split(',').map(s => s.trim()).filter(Boolean);
     const respuesta = fRespuesta.value.trim();
-    if (!claves.length || !respuesta) {
-      alert('Escribe al menos una palabra clave y una respuesta.');
-      return;
-    }
-    CONOCIMIENTO.push({
-      materia: fMateria.value,
-      claves,
-      pregunta: fPregunta.value.trim(),
-      respuesta
-    });
+    if (!claves.length || !respuesta) { alert('Escribe al menos una palabra clave y una respuesta.'); return; }
+    CONOCIMIENTO.push({ materia: fMateria.value, claves, pregunta: fPregunta.value.trim(), respuesta });
     guardarConocimiento();
     fClaves.value = ''; fPregunta.value = ''; fRespuesta.value = '';
     renderLista();
@@ -617,50 +723,23 @@
     reader.onload = () => {
       try {
         const datos = JSON.parse(reader.result);
-        if (Array.isArray(datos)) {
-          CONOCIMIENTO = datos;
-          guardarConocimiento();
-          renderLista();
-        } else {
-          alert('El archivo no tiene el formato esperado.');
-        }
-      } catch(e) {
-        alert('No se pudo leer el archivo JSON.');
-      }
+        if (Array.isArray(datos)) { CONOCIMIENTO = datos; guardarConocimiento(); renderLista(); }
+        else { alert('El archivo no tiene el formato esperado.'); }
+      } catch(e) { alert('No se pudo leer el archivo JSON.'); }
     };
     reader.readAsText(file);
     importarInput.value = '';
   });
 
-  function escucharComando(){
-    if (!reconocedor) return;
-    statusEl.innerHTML = '<span class="listen-indicator"><span class="listen-dot"></span> Escuchando tu comando…</span>';
-    try { reconocedor.start(); } catch(e) { /* ya estaba activo */ }
-  }
-
-  if (reconocedor) {
-    reconocedor.onresult = (event) => {
-      const texto = event.results[0][0].transcript;
-      captionEl.textContent = `Escuché: "${texto}"`;
-      responderComando(texto);
-    };
-    reconocedor.onerror = () => {
-      statusEl.innerHTML = '<b>Escuchando</b> — aplaude cerca del micrófono';
-    };
-    reconocedor.onend = () => {
-      setTimeout(() => {
-        if (!cooldown) statusEl.innerHTML = '<b>Escuchando</b> — aplaude cerca del micrófono';
-      }, 2400);
-    };
-  }
-
-  // --- Audio: detección de aplauso ---
-  let audioCtx, analyser, dataArray, source, rafId;
+  /* =========================================================
+     Detección de aplauso (audio)
+     ========================================================= */
+  let audioCtx, analyser, dataArray, source;
   let cooldown = false;
   const HISTORY = [];
-  const HISTORY_LEN = 6;   // ventana corta para detectar transiente
-  const THRESHOLD_JUMP = 42; // sensibilidad del salto brusco de energía
-  const MIN_LEVEL = 55;      // piso para no disparar con silencio/ruido bajo
+  const HISTORY_LEN = 6;
+  const THRESHOLD_JUMP = 42;
+  const MIN_LEVEL = 55;
 
   async function iniciar(){
     try {
@@ -677,7 +756,7 @@
       startBtn.textContent = "SISTEMA ACTIVO";
       statusEl.innerHTML = '<b>Escuchando</b> — aplaude cerca del micrófono';
       coreGlow.classList.add('listening');
-      hablar("Sistema activado. Estoy escuchando.");
+      hablar("Sistema activado. Aplaude cuando quieras comenzar, señor.");
       loop();
     } catch (err) {
       statusEl.textContent = "No se pudo acceder al micrófono. Revisa permisos del navegador.";
@@ -719,17 +798,14 @@
     document.querySelectorAll('.tick').forEach(t => t.classList.toggle('active', on));
   }
 
-  function dispararAplauso(nivel){
+  function dispararAplauso(){
     if (cooldown) return;
+    if (estado !== ESTADO.IDLE) return; // ya hay una conversación activa
     cooldown = true;
     coreGlow.classList.add('triggered');
     activarHUD(true);
     statusEl.innerHTML = '<b>Aplauso detectado</b>';
-    const frase = RESPONSES[Math.floor(Math.random()*RESPONSES.length)];
-    hablar(frase, () => {
-      // Terminó de hablar: abre una ventana breve para escuchar tu comando
-      escucharComando();
-    });
+    iniciarConversacion();
     setTimeout(() => {
       coreGlow.classList.remove('triggered');
       activarHUD(false);
@@ -755,10 +831,10 @@
     dibujarOnda(nivel, cooldown);
 
     if (!cooldown && nivel > MIN_LEVEL && salto > THRESHOLD_JUMP) {
-      dispararAplauso(nivel);
+      dispararAplauso();
     }
 
-    rafId = requestAnimationFrame(loop);
+    requestAnimationFrame(loop);
   }
 
   startBtn.addEventListener('click', iniciar);
