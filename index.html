@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J.A.R.V.I.S. — Detector de Aplauso</title>
+<style>
+  :root {
+    --bg: #030608;
+    --core: #4fd8ff;
+    --core-dim: #1a6b85;
+    --ring: #0d2b36;
+    --text: #cdeffb;
+    --text-dim: #5f8a96;
+    --warn: #ff6b4a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: radial-gradient(ellipse at center, #061014 0%, var(--bg) 70%);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: var(--text);
+    overflow: hidden;
+  }
+  .stage {
+    position: relative;
+    width: 100%; height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+
+  .core-wrap {
+    position: relative;
+    width: min(70vw, 340px);
+    height: min(70vw, 340px);
+  }
+
+  svg.rings { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  .ring { fill: none; stroke: var(--ring); stroke-width: 1.4; transition: stroke .25s ease; }
+  .ring.active { stroke: var(--core-dim); }
+
+  .tick { stroke: var(--ring); stroke-width: 1; }
+  .tick.active { stroke: var(--core); }
+
+  .core-glow {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 34%; height: 34%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--core) 0%, var(--core-dim) 55%, transparent 75%);
+    box-shadow: 0 0 40px 6px rgba(79, 216, 255, 0.25);
+    opacity: 0.45;
+    transition: opacity .2s ease, box-shadow .2s ease, transform .2s ease;
+  }
+  .core-glow.listening { opacity: 0.65; }
+  .core-glow.triggered {
+    opacity: 1;
+    box-shadow: 0 0 90px 20px rgba(79, 216, 255, 0.55);
+    transform: translate(-50%, -50%) scale(1.12);
+  }
+
+  .bars {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .bars canvas { width: 100%; height: 100%; }
+
+  .status {
+    margin-top: 34px;
+    text-align: center;
+    letter-spacing: 0.12em;
+    font-size: 13px;
+    color: var(--text-dim);
+    min-height: 20px;
+  }
+  .status b { color: var(--core); font-weight: 500; }
+
+  .caption {
+    margin-top: 10px;
+    max-width: 420px;
+    text-align: center;
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--text);
+    min-height: 48px;
+    padding: 0 20px;
+  }
+
+  .startbtn {
+    margin-top: 26px;
+    padding: 10px 22px;
+    background: transparent;
+    border: 1px solid var(--core-dim);
+    color: var(--core);
+    border-radius: 4px;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all .2s ease;
+  }
+  .startbtn:hover { background: rgba(79,216,255,0.08); border-color: var(--core); }
+  .startbtn:disabled { opacity: 0.3; cursor: default; }
+
+  .meter {
+    position: absolute;
+    bottom: 26px; left: 50%;
+    transform: translateX(-50%);
+    width: min(80vw, 260px);
+    height: 4px;
+    background: var(--ring);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .meter-fill {
+    height: 100%; width: 0%;
+    background: var(--core-dim);
+    transition: width .05s linear;
+  }
+  .meter-fill.hot { background: var(--warn); }
+
+  .corner {
+    position: absolute;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+  }
+  .corner.tl { top: 18px; left: 18px; }
+  .corner.tr { top: 18px; right: 18px; text-align: right; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="corner tl">SISTEMA · ESCUCHA ACTIVA</div>
+  <div class="corner tr" id="clockCorner">--:--:--</div>
+
+  <div class="core-wrap">
+    <svg class="rings" viewBox="0 0 200 200">
+      <circle class="ring" id="ring1" cx="100" cy="100" r="92"/>
+      <circle class="ring" id="ring2" cx="100" cy="100" r="74"/>
+      <circle class="ring" id="ring3" cx="100" cy="100" r="58"/>
+      <g id="ticks"></g>
+    </svg>
+    <div class="bars"><canvas id="waveCanvas" width="340" height="340"></canvas></div>
+    <div class="core-glow" id="coreGlow"></div>
+  </div>
+
+  <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+
+  <div class="status" id="status">Presiona <b>ACTIVAR</b> para habilitar el micrófono</div>
+  <div class="caption" id="caption"></div>
+  <button class="startbtn" id="startBtn">ACTIVAR SISTEMA</button>
+</div>
+
+<script>
+(function(){
+  const startBtn = document.getElementById('startBtn');
+  const statusEl = document.getElementById('status');
+  const captionEl = document.getElementById('caption');
+  const coreGlow = document.getElementById('coreGlow');
+  const meterFill = document.getElementById('meterFill');
+  const clockCorner = document.getElementById('clockCorner');
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // Ticks decorativos alrededor del anillo exterior
+  const ticksGroup = document.getElementById('ticks');
+  const TICK_COUNT = 48;
+  for (let i = 0; i < TICK_COUNT; i++) {
+    const angle = (i / TICK_COUNT) * Math.PI * 2;
+    const r1 = 96, r2 = 100;
+    const x1 = 100 + r1 * Math.cos(angle);
+    const y1 = 100 + r1 * Math.sin(angle);
+    const x2 = 100 + r2 * Math.cos(angle);
+    const y2 = 100 + r2 * Math.sin(angle);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+    line.classList.add('tick');
+    line.dataset.idx = i;
+    ticksGroup.appendChild(line);
+  }
+
+  function setClock(){
+    clockCorner.textContent = new Date().toLocaleTimeString('es-PA', {hour12:false});
+  }
+  setClock();
+  setInterval(setClock, 1000);
+
+  // --- Respuestas tipo Jarvis ---
+  const RESPONSES = [
+    "A la orden. Sistema activo.",
+    "Te escucho. ¿Qué necesitas?",
+    "Aplauso registrado. Todo en orden.",
+    "Aquí estoy. Dime qué hacemos.",
+    "Sistema en línea y a tu disposición."
+  ];
+
+  let voz = null;
+  function elegirVoz(){
+    const voces = speechSynthesis.getVoices();
+    voz = voces.find(v => v.lang && v.lang.startsWith('es')) || voces[0] || null;
+  }
+  if ('speechSynthesis' in window) {
+    speechSynthesis.onvoiceschanged = elegirVoz;
+    elegirVoz();
+  }
+
+  function hablar(texto){
+    captionEl.textContent = texto;
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(texto);
+    if (voz) u.voice = voz;
+    u.lang = 'es-ES';
+    u.pitch = 0.85;
+    u.rate = 1.0;
+    speechSynthesis.speak(u);
+  }
+
+  // --- Audio: detección de aplauso ---
+  let audioCtx, analyser, dataArray, source, rafId;
+  let cooldown = false;
+  const HISTORY = [];
+  const HISTORY_LEN = 6;   // ventana corta para detectar transiente
+  const THRESHOLD_JUMP = 42; // sensibilidad del salto brusco de energía
+  const MIN_LEVEL = 55;      // piso para no disparar con silencio/ruido bajo
+
+  async function iniciar(){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      source = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.2;
+      source.connect(analyser);
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      startBtn.disabled = true;
+      startBtn.textContent = "SISTEMA ACTIVO";
+      statusEl.innerHTML = '<b>Escuchando</b> — aplaude cerca del micrófono';
+      coreGlow.classList.add('listening');
+      hablar("Sistema activado. Estoy escuchando.");
+      loop();
+    } catch (err) {
+      statusEl.textContent = "No se pudo acceder al micrófono. Revisa permisos del navegador.";
+      console.error(err);
+    }
+  }
+
+  function nivelPromedio(){
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+    return sum / dataArray.length;
+  }
+
+  function dibujarOnda(nivel, activo){
+    ctx.clearRect(0,0,canvas.width, canvas.height);
+    const cx = canvas.width/2, cy = canvas.height/2;
+    const baseR = 60;
+    const bars = 64;
+    for (let i=0;i<bars;i++){
+      const idx = Math.floor(i * dataArray.length / bars);
+      const v = dataArray[idx] / 255;
+      const len = 6 + v * (activo ? 46 : 26);
+      const angle = (i / bars) * Math.PI * 2;
+      const x1 = cx + Math.cos(angle) * baseR;
+      const y1 = cy + Math.sin(angle) * baseR;
+      const x2 = cx + Math.cos(angle) * (baseR + len);
+      const y2 = cy + Math.sin(angle) * (baseR + len);
+      ctx.strokeStyle = activo ? 'rgba(79,216,255,0.9)' : 'rgba(79,216,255,0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x1,y1);
+      ctx.lineTo(x2,y2);
+      ctx.stroke();
+    }
+  }
+
+  function activarHUD(on){
+    ['ring1','ring2','ring3'].forEach(id => document.getElementById(id).classList.toggle('active', on));
+    document.querySelectorAll('.tick').forEach(t => t.classList.toggle('active', on));
+  }
+
+  function dispararAplauso(nivel){
+    if (cooldown) return;
+    cooldown = true;
+    coreGlow.classList.add('triggered');
+    activarHUD(true);
+    statusEl.innerHTML = '<b>Aplauso detectado</b>';
+    const frase = RESPONSES[Math.floor(Math.random()*RESPONSES.length)];
+    hablar(frase);
+    setTimeout(() => {
+      coreGlow.classList.remove('triggered');
+      activarHUD(false);
+      statusEl.innerHTML = '<b>Escuchando</b> — aplaude cerca del micrófono';
+      cooldown = false;
+    }, 1800);
+  }
+
+  function loop(){
+    analyser.getByteFrequencyData(dataArray);
+    const nivel = nivelPromedio();
+
+    HISTORY.push(nivel);
+    if (HISTORY.length > HISTORY_LEN) HISTORY.shift();
+
+    const promedioPrevio = HISTORY.length > 1
+      ? HISTORY.slice(0, -1).reduce((a,b)=>a+b,0) / (HISTORY.length - 1)
+      : 0;
+    const salto = nivel - promedioPrevio;
+
+    meterFill.style.width = Math.min(100, (nivel/120)*100) + '%';
+    meterFill.classList.toggle('hot', nivel > MIN_LEVEL);
+
+    dibujarOnda(nivel, cooldown);
+
+    if (!cooldown && nivel > MIN_LEVEL && salto > THRESHOLD_JUMP) {
+      dispararAplauso(nivel);
+    }
+
+    rafId = requestAnimationFrame(loop);
+  }
+
+  startBtn.addEventListener('click', iniciar);
+})();
+</script>
+</body>
+</html>
