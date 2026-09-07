@@ -665,12 +665,17 @@
     }
 
     if (estadoEstudio === "EN_EXAMEN" && preguntaActual) {
-      if (txt.includes("cambiar materia") || txt.includes("otra materia")) {
+      // Comando para cambiar de materia
+      if (txt.includes("cambiar materia") || txt.includes("cambiar de materia") || txt.includes("otra materia") || txt.includes("materia diferente")) {
         estadoEstudio = "ESPERANDO_MATERIA";
-        hablar("Entendido, señor JP. ¿Qué otra materia desea repasar?");
+        hablar("Entendido, señor JP. ¿Qué otra materia desea repasar?", () => {
+          materiaBadge.innerHTML = "";
+          captionEl.textContent = "";
+        });
         return;
       }
 
+      // Comando para saltar pregunta
       if (txt.includes("no se") || txt.includes("ni idea") || txt.includes("paso") || txt.includes("siguiente")) {
         hablar(`La respuesta es ${preguntaActual.respuesta}. Siguiente pregunta.`, () => {
           siguientePregunta();
@@ -678,7 +683,7 @@
         return;
       }
 
-      // EVALUACIÓN FLEXIBLE E INTELIGENTE
+      // Evaluación de respuesta
       const acierto = evaluarRespuestaSemantica(transcripcion, preguntaActual.respuesta);
 
       if (acierto) {
