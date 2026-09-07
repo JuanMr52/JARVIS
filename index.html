@@ -160,6 +160,126 @@
     0%, 100% { opacity: 0.4; }
     50% { opacity: 1; }
   }
+
+  /* --- Panel de materias --- */
+  .panel-toggle {
+    position: absolute;
+    bottom: 18px; right: 18px;
+    background: transparent;
+    border: 1px solid var(--ring);
+    color: var(--text-dim);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+  }
+  .panel-toggle:hover { border-color: var(--core-dim); color: var(--text); }
+
+  .panel-overlay {
+    position: fixed; inset: 0;
+    background: rgba(2,6,8,0.88);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 20;
+    padding: 24px;
+  }
+  .panel-overlay.open { display: flex; }
+
+  .panel-box {
+    width: min(560px, 100%);
+    max-height: 84vh;
+    overflow-y: auto;
+    background: #061014;
+    border: 1px solid var(--ring);
+    border-radius: 8px;
+    padding: 22px 24px;
+  }
+  .panel-box h2 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    color: var(--core);
+    font-weight: 500;
+  }
+  .panel-box p.hint {
+    margin: 0 0 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .campo { margin-bottom: 12px; }
+  .campo label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    letter-spacing: 0.04em;
+  }
+  .campo input, .campo select, .campo textarea {
+    width: 100%;
+    background: #030608;
+    color: var(--text);
+    border: 1px solid var(--ring);
+    border-radius: 4px;
+    padding: 8px 9px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .campo textarea { min-height: 54px; }
+  .panel-actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+  .panel-actions button {
+    background: transparent;
+    border: 1px solid var(--core-dim);
+    color: var(--core);
+    border-radius: 4px;
+    padding: 8px 14px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .panel-actions button:hover { background: rgba(79,216,255,0.08); }
+  .panel-actions button.secundario {
+    border-color: var(--ring); color: var(--text-dim);
+  }
+  .panel-actions input[type=file] { display: none; }
+
+  .lista-conocimiento {
+    margin-top: 20px;
+    border-top: 1px solid var(--ring);
+    padding-top: 14px;
+  }
+  .item-conocimiento {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(13,43,54,0.6);
+    font-size: 12.5px;
+  }
+  .item-conocimiento .txt { flex: 1; }
+  .item-conocimiento .materia-tag {
+    color: var(--core);
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
+  }
+  .item-conocimiento .pregunta { color: var(--text); margin: 2px 0; }
+  .item-conocimiento .respuesta { color: var(--text-dim); }
+  .item-conocimiento button {
+    background: none; border: none;
+    color: var(--warn);
+    cursor: pointer;
+    font-size: 12px;
+    height: fit-content;
+  }
+  .cerrar-panel {
+    float: right;
+    background: none; border: none;
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+  }
 </style>
 </head>
 <body>
@@ -187,6 +307,50 @@
   <div class="voicebar">
     <label for="voiceSelect">Voz</label>
     <select id="voiceSelect"></select>
+  </div>
+</div>
+
+<button class="panel-toggle" id="panelToggle">📚 MATERIAS</button>
+
+<div class="panel-overlay" id="panelOverlay">
+  <div class="panel-box">
+    <button class="cerrar-panel" id="cerrarPanel">✕</button>
+    <h2>PANEL DE MATERIAS</h2>
+    <p class="hint">Agrega preguntas y respuestas de tus materias. Cuando digas algo parecido a la pregunta o a las palabras clave, el sistema responderá con lo que escribiste aquí.</p>
+
+    <div class="campo">
+      <label for="fMateria">Materia</label>
+      <select id="fMateria">
+        <option>Fisiología</option>
+        <option>Parasitología</option>
+        <option>Citología / Histología</option>
+        <option>Psicología</option>
+        <option>Epidemiología</option>
+        <option>Química</option>
+        <option>General</option>
+      </select>
+    </div>
+    <div class="campo">
+      <label for="fClaves">Palabras clave (separadas por coma — lo que dirías en voz alta)</label>
+      <input type="text" id="fClaves" placeholder="ej: nefrona, filtración glomerular">
+    </div>
+    <div class="campo">
+      <label for="fPregunta">Pregunta (referencia, opcional)</label>
+      <input type="text" id="fPregunta" placeholder="ej: ¿Qué es la nefrona?">
+    </div>
+    <div class="campo">
+      <label for="fRespuesta">Respuesta que dirá en voz alta</label>
+      <textarea id="fRespuesta" placeholder="ej: La nefrona es la unidad funcional del riñón..."></textarea>
+    </div>
+
+    <div class="panel-actions">
+      <button id="agregarBtn">+ Agregar</button>
+      <button class="secundario" id="exportarBtn">⬇ Exportar JSON</button>
+      <button class="secundario" id="importarBtn">⬆ Importar JSON</button>
+      <input type="file" id="importarInput" accept="application/json">
+    </div>
+
+    <div class="lista-conocimiento" id="listaConocimiento"></div>
   </div>
 </div>
 
@@ -311,16 +475,162 @@
     { claves: ['adios', 'adiós', 'hasta luego'], respuesta: 'Hasta luego. Aquí estaré si me necesitas.' },
   ];
 
+  // --- Base de conocimiento por materias (Fisiología, Parasitología, etc.) ---
+  const CLAVE_STORAGE = 'jarvis_conocimiento_v1';
+
+  const SEMILLA_CONOCIMIENTO = [
+    { materia: 'Fisiología', claves: ['nefrona', 'unidad funcional del riñon', 'unidad funcional del riñón'],
+      pregunta: '¿Qué es la nefrona?',
+      respuesta: 'La nefrona es la unidad funcional y estructural del riñón, encargada de filtrar la sangre y formar la orina.' },
+    { materia: 'Parasitología', claves: ['tecnica de ritchie', 'técnica de ritchie'],
+      pregunta: '¿Para qué sirve la técnica de Ritchie?',
+      respuesta: 'La técnica de Ritchie es un método de concentración por sedimentación que se usa para detectar huevos y quistes de parásitos en heces.' },
+    { materia: 'Citología / Histología', claves: ['gastritis'],
+      pregunta: '¿Qué es la gastritis?',
+      respuesta: 'La gastritis es la inflamación de la mucosa gástrica, que puede ser aguda o crónica y suele estudiarse mediante biopsia y citología.' },
+    { materia: 'Psicología', claves: ['memoria a corto plazo'],
+      pregunta: '¿Qué es la memoria a corto plazo?',
+      respuesta: 'La memoria a corto plazo retiene información por segundos o minutos, con una capacidad limitada, antes de pasar o no a la memoria a largo plazo.' },
+    { materia: 'Epidemiología', claves: ['incidencia', 'prevalencia'],
+      pregunta: '¿Cuál es la diferencia entre incidencia y prevalencia?',
+      respuesta: 'La incidencia mide los casos nuevos de una enfermedad en un periodo, mientras que la prevalencia mide el total de casos existentes, nuevos y antiguos, en un momento dado.' },
+    { materia: 'Química', claves: ['ph', 'potencial de hidrogeno', 'potencial de hidrógeno'],
+      pregunta: '¿Qué mide el pH?',
+      respuesta: 'El pH mide qué tan ácida o básica es una solución, en una escala de 0 a 14, según la concentración de iones hidrógeno.' },
+  ];
+
+  function cargarConocimiento(){
+    try {
+      const guardado = localStorage.getItem(CLAVE_STORAGE);
+      if (guardado) return JSON.parse(guardado);
+    } catch(e) { /* localStorage no disponible o dato corrupto */ }
+    return SEMILLA_CONOCIMIENTO.slice();
+  }
+
+  function guardarConocimiento(){
+    try { localStorage.setItem(CLAVE_STORAGE, JSON.stringify(CONOCIMIENTO)); }
+    catch(e) { console.warn('No se pudo guardar en localStorage', e); }
+  }
+
+  let CONOCIMIENTO = cargarConocimiento();
+
+  function normalizar(s){
+    return s.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // quita tildes para comparar mejor
+  }
+
   function responderComando(texto){
-    const t = texto.toLowerCase();
-    const match = COMANDOS.find(c => c.claves.some(k => t.includes(k)));
+    const t = normalizar(texto);
+
+    // 1) Base de conocimiento de materias primero (más específico)
+    const item = CONOCIMIENTO.find(c => c.claves.some(k => t.includes(normalizar(k))));
+    if (item) { hablar(item.respuesta); return; }
+
+    // 2) Comandos generales tipo Jarvis
+    const match = COMANDOS.find(c => c.claves.some(k => t.includes(normalizar(k))));
     if (match) {
       const resp = typeof match.respuesta === 'function' ? match.respuesta() : match.respuesta;
       hablar(resp);
-    } else {
-      hablar('No tengo una respuesta lista para eso todavía, pero puedo aprenderla.');
+      return;
     }
+
+    hablar('No tengo una respuesta lista para eso todavía. Puedes agregarla en el panel de materias.');
   }
+
+  // --- Interfaz del panel de materias ---
+  const panelToggle = document.getElementById('panelToggle');
+  const panelOverlay = document.getElementById('panelOverlay');
+  const cerrarPanel = document.getElementById('cerrarPanel');
+  const fMateria = document.getElementById('fMateria');
+  const fClaves = document.getElementById('fClaves');
+  const fPregunta = document.getElementById('fPregunta');
+  const fRespuesta = document.getElementById('fRespuesta');
+  const agregarBtn = document.getElementById('agregarBtn');
+  const exportarBtn = document.getElementById('exportarBtn');
+  const importarBtn = document.getElementById('importarBtn');
+  const importarInput = document.getElementById('importarInput');
+  const listaConocimiento = document.getElementById('listaConocimiento');
+
+  function renderLista(){
+    listaConocimiento.innerHTML = '';
+    CONOCIMIENTO.forEach((item, idx) => {
+      const div = document.createElement('div');
+      div.className = 'item-conocimiento';
+      div.innerHTML = `
+        <div class="txt">
+          <div class="materia-tag">${item.materia}</div>
+          <div class="pregunta">${item.pregunta || item.claves.join(', ')}</div>
+          <div class="respuesta">${item.respuesta}</div>
+        </div>
+        <button data-idx="${idx}">Eliminar</button>
+      `;
+      listaConocimiento.appendChild(div);
+    });
+    listaConocimiento.querySelectorAll('button[data-idx]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        CONOCIMIENTO.splice(Number(btn.dataset.idx), 1);
+        guardarConocimiento();
+        renderLista();
+      });
+    });
+  }
+
+  panelToggle.addEventListener('click', () => {
+    panelOverlay.classList.add('open');
+    renderLista();
+  });
+  cerrarPanel.addEventListener('click', () => panelOverlay.classList.remove('open'));
+  panelOverlay.addEventListener('click', (e) => { if (e.target === panelOverlay) panelOverlay.classList.remove('open'); });
+
+  agregarBtn.addEventListener('click', () => {
+    const claves = fClaves.value.split(',').map(s => s.trim()).filter(Boolean);
+    const respuesta = fRespuesta.value.trim();
+    if (!claves.length || !respuesta) {
+      alert('Escribe al menos una palabra clave y una respuesta.');
+      return;
+    }
+    CONOCIMIENTO.push({
+      materia: fMateria.value,
+      claves,
+      pregunta: fPregunta.value.trim(),
+      respuesta
+    });
+    guardarConocimiento();
+    fClaves.value = ''; fPregunta.value = ''; fRespuesta.value = '';
+    renderLista();
+  });
+
+  exportarBtn.addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(CONOCIMIENTO, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'conocimiento.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  importarBtn.addEventListener('click', () => importarInput.click());
+  importarInput.addEventListener('change', () => {
+    const file = importarInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const datos = JSON.parse(reader.result);
+        if (Array.isArray(datos)) {
+          CONOCIMIENTO = datos;
+          guardarConocimiento();
+          renderLista();
+        } else {
+          alert('El archivo no tiene el formato esperado.');
+        }
+      } catch(e) {
+        alert('No se pudo leer el archivo JSON.');
+      }
+    };
+    reader.readAsText(file);
+    importarInput.value = '';
+  });
 
   function escucharComando(){
     if (!reconocedor) return;
