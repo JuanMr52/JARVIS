@@ -128,6 +128,38 @@
   }
   .corner.tl { top: 18px; left: 18px; }
   .corner.tr { top: 18px; right: 18px; text-align: right; }
+
+  .voicebar {
+    margin-top: 18px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--text-dim);
+  }
+  .voicebar select {
+    background: #061014;
+    color: var(--text);
+    border: 1px solid var(--ring);
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 12px;
+    max-width: 220px;
+  }
+  .voicebar select:focus { outline: 1px solid var(--core-dim); }
+
+  .listen-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .listen-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--warn);
+    box-shadow: 0 0 8px 2px rgba(255,107,74,0.6);
+    animation: pulse 1s infinite ease-in-out;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
 </style>
 </head>
 <body>
@@ -151,6 +183,11 @@
   <div class="status" id="status">Presiona <b>ACTIVAR</b> para habilitar el micrófono</div>
   <div class="caption" id="caption"></div>
   <button class="startbtn" id="startBtn">ACTIVAR SISTEMA</button>
+
+  <div class="voicebar">
+    <label for="voiceSelect">Voz</label>
+    <select id="voiceSelect"></select>
+  </div>
 </div>
 
 <script>
@@ -198,25 +235,113 @@
   ];
 
   let voz = null;
-  function elegirVoz(){
+  const voiceSelect = document.getElementById('voiceSelect');
+
+  // Palabras que suelen indicar una voz de mayor calidad (motor de red vs. local)
+  const PISTAS_CALIDAD = ['google', 'natural', 'online', 'neural', 'microsoft'];
+
+  function poblarVoces(){
     const voces = speechSynthesis.getVoices();
-    voz = voces.find(v => v.lang && v.lang.startsWith('es')) || voces[0] || null;
-  }
-  if ('speechSynthesis' in window) {
-    speechSynthesis.onvoiceschanged = elegirVoz;
-    elegirVoz();
+    if (!voces.length) return;
+
+    // Todas primero, priorizando español y voces de mejor calidad
+    const ordenadas = [...voces].sort((a, b) => {
+      const aEs = a.lang && a.lang.startsWith('es') ? 1 : 0;
+      const bEs = b.lang && b.lang.startsWith('es') ? 1 : 0;
+      if (aEs !== bEs) return bEs - aEs;
+      const aCal = PISTAS_CALIDAD.some(p => a.name.toLowerCase().includes(p)) ? 1 : 0;
+      const bCal = PISTAS_CALIDAD.some(p => b.name.toLowerCase().includes(p)) ? 1 : 0;
+      return bCal - aCal;
+    });
+
+    voiceSelect.innerHTML = '';
+    ordenadas.forEach((v, i) => {
+      const opt = document.createElement('option');
+      opt.value = v.name;
+      opt.textContent = `${v.name} (${v.lang})`;
+      voiceSelect.appendChild(opt);
+    });
+
+    // Preselecciona la mejor opción en español
+    const mejor = ordenadas.find(v => v.lang && v.lang.startsWith('es') &&
+      PISTAS_CALIDAD.some(p => v.name.toLowerCase().includes(p))) || ordenadas[0];
+    voz = mejor;
+    voiceSelect.value = mejor.name;
   }
 
-  function hablar(texto){
+  voiceSelect.addEventListener('change', () => {
+    const voces = speechSynthesis.getVoices();
+    voz = voces.find(v => v.name === voiceSelect.value) || voz;
+  });
+
+  if ('speechSynthesis' in window) {
+    speechSynthesis.onvoiceschanged = poblarVoces;
+    poblarVoces();
+  }
+
+  function hablar(texto, alTerminar){
     captionEl.textContent = texto;
-    if (!('speechSynthesis' in window)) return;
+    if (!('speechSynthesis' in window)) { if (alTerminar) alTerminar(); return; }
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(texto);
     if (voz) u.voice = voz;
-    u.lang = 'es-ES';
-    u.pitch = 0.85;
+    u.lang = (voz && voz.lang) || 'es-ES';
+    u.pitch = 1.0;
     u.rate = 1.0;
+    if (alTerminar) u.onend = alTerminar;
     speechSynthesis.speak(u);
+  }
+
+  // --- Reconocimiento de voz: escucha un comando después del aplauso ---
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let reconocedor = null;
+  if (SR) {
+    reconocedor = new SR();
+    reconocedor.lang = 'es-ES';
+    reconocedor.continuous = false;
+    reconocedor.interimResults = false;
+  }
+
+  // Reglas simples de comando -> respuesta (palabra clave incluida en lo que dijiste)
+  const COMANDOS = [
+    { claves: ['hola', 'buenas'], respuesta: '¡Hola! ¿En qué te ayudo?' },
+    { claves: ['estado', 'como estas', 'cómo estás'], respuesta: 'Todos los sistemas funcionando con normalidad.' },
+    { claves: ['gracias'], respuesta: 'A la orden, cuando quieras.' },
+    { claves: ['hora'], respuesta: () => `Son las ${new Date().toLocaleTimeString('es-PA',{hour:'2-digit',minute:'2-digit'})}.` },
+    { claves: ['adios', 'adiós', 'hasta luego'], respuesta: 'Hasta luego. Aquí estaré si me necesitas.' },
+  ];
+
+  function responderComando(texto){
+    const t = texto.toLowerCase();
+    const match = COMANDOS.find(c => c.claves.some(k => t.includes(k)));
+    if (match) {
+      const resp = typeof match.respuesta === 'function' ? match.respuesta() : match.respuesta;
+      hablar(resp);
+    } else {
+      hablar('No tengo una respuesta lista para eso todavía, pero puedo aprenderla.');
+    }
+  }
+
+  function escucharComando(){
+    if (!reconocedor) return;
+    statusEl.innerHTML = '<span class="listen-indicator"><span class="listen-dot"></span> Escuchando tu comando…</span>';
+    try { reconocedor.start(); } catch(e) { /* ya estaba activo */ }
+  }
+
+  if (reconocedor) {
+    reconocedor.onresult = (event) => {
+      const texto = event.results[0][0].transcript;
+      captionEl.textContent = `Escuché: "${texto}"`;
+      responderComando(texto);
+    };
+    reconocedor.onerror = () => {
+      statusEl.innerHTML = '<b>Escuchando</b> — aplaude cerca del micrófono';
+    };
+    reconocedor.onend = () => {
+      setTimeout(() => {
+        if (!cooldown) statusEl.innerHTML = '<b>Escuchando</b> — aplaude cerca del micrófono';
+      }, 2400);
+    };
   }
 
   // --- Audio: detección de aplauso ---
@@ -291,13 +416,15 @@
     activarHUD(true);
     statusEl.innerHTML = '<b>Aplauso detectado</b>';
     const frase = RESPONSES[Math.floor(Math.random()*RESPONSES.length)];
-    hablar(frase);
+    hablar(frase, () => {
+      // Terminó de hablar: abre una ventana breve para escuchar tu comando
+      escucharComando();
+    });
     setTimeout(() => {
       coreGlow.classList.remove('triggered');
       activarHUD(false);
-      statusEl.innerHTML = '<b>Escuchando</b> — aplaude cerca del micrófono';
       cooldown = false;
-    }, 1800);
+    }, 4200);
   }
 
   function loop(){
